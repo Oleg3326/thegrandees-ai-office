@@ -47,10 +47,11 @@ function install(file, events, makeGroup) {
 }
 
 // Claude Code: запуск напрямую (node + аргументы), без оболочки.
-const claudeEvents = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Notification', 'Stop', 'SessionEnd'];
+// SubagentStart/SubagentStop/PostToolUseFailure добавлены в форке: субагенты как отдельные боты и красные глаза при ошибке.
+const claudeEvents = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'SubagentStart', 'SubagentStop', 'Notification', 'Stop', 'SessionEnd'];
 install(path.join(os.homedir(), '.claude', 'settings.json'), claudeEvents, ev => {
   const g = { hooks: [{ type: 'command', command: nodePath, args: [hookPath, 'claude'], timeout: 3 }] };
-  if (['PreToolUse', 'PostToolUse'].includes(ev)) g.matcher = '*';
+  if (['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(ev)) g.matcher = '*';
   return g;
 });
 

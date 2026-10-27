@@ -218,13 +218,23 @@ async function checkUpdate() {
     }
   } catch (e) { if (VERSION_FILE) updLog(`ошибка: ${e.message}`); }   // нет сети: попробуем позже
 }
-// ПОКИ РОЗРОБЛЯЄМО: перевірка кожні 15 с, щоб нові версії приходили одразу. Після розробки повернути 12 годин.
+// ФОРК: автообновление выключено. Оригинал каждые 15 секунд сверялся с репозиторием автора и ставил его код поверх,
+// то есть затёр бы любые правки. Включить обратно можно только явно: OFFICE_ALLOW_UPDATE=1.
 const UPDATE_EVERY = 15e3;
-if (VERSION_FILE) { setTimeout(checkUpdate, 15e3); setInterval(checkUpdate, UPDATE_EVERY); }
+if (VERSION_FILE && process.env.OFFICE_ALLOW_UPDATE === '1') { setTimeout(checkUpdate, 15e3); setInterval(checkUpdate, UPDATE_EVERY); }
 const myVersion = () => { try { return fs.readFileSync(VERSION_FILE, 'utf8').replace(/^\uFEFF/, '').trim(); } catch { return ''; } };
 
 // ---------- сессии из хуков ----------
 const sessions = new Map();
+const MAX_SUBS_PER_SESSION = 4;     // сколько субагентов одной сессии рисуем (столов в офисе всего 8)
+const SUB_MIN_SHOW = 8e3;           // даже самый быстрый субагент виден минимум 8 с: успеет дойти до стола
+const SUB_LINGER = 3e3;             // и ещё 3 с после завершения
+const ERR_SHOW = 8e3;               // сколько секунд бот «красный» после ошибки инструмента
+const endSubs = (s, now) => { for (const x of s.subs.values()) x.endAt ||= now; };
+// Доля заполненного контекста. Окно угадываем: больше 200k токенов в контексте значит, окно миллионное.
+// Если окно у тебя другое: OFFICE_CTX_MAX=число.
+const ctxMax = n => Number(process.env.OFFICE_CTX_MAX) || (n > 200e3 ? 1e6 : 200e3);
+const ctxFrac = s => s.ctxTokens > 0 ? Math.min(1, s.ctxTokens / ctxMax(s.ctxTokens)) : undefined;
 
 function folderOf(cwd) { return String(cwd || '').split(/[\\/]/).filter(Boolean).pop()?.slice(0, 24) || ''; }
 
@@ -233,24 +243,46 @@ function apply(ev) {
   if (!id) return;
   const now = Date.now();
   let s = sessions.get(id);
-  if (!s) { s = { id, kind: ev.agent === 'codex' ? 'codex' : 'claude', folder: '', status: 'idle', tool: '', detail: '', last: now, ppid: 0, pid: 0 }; sessions.set(id, s); }
+  if (!s) { s = { id, kind: ev.agent === 'codex' ? 'codex' : 'claude', folder: '', status: 'idle', tool: '', detail: '', last: now, ppid: 0, pid: 0, subs: new Map(), dead: new Set(), errAt: 0, ctxTokens: 0 }; sessions.set(id, s); }
   if (ev.cwd) s.folder = folderOf(ev.cwd);
   if (ev.ppid) s.ppid = Number(ev.ppid);
   s.last = now;
   const msg = String(ev.message || '');
   const detail = String(ev.detail || '').slice(0, 24);
+  if (Number(ev.ctx_tokens) > 0) s.ctxTokens = Math.min(Number(ev.ctx_tokens), 5e6);
+
+  // Субагенты (Claude Code): события внутри субагента приходят с agent_id и относятся к нему, а не к родителю.
+  const aid = ev.agent_id ? String(ev.agent_id).slice(0, 60) : '';
+  if (aid) {
+    let sub = s.subs.get(aid);
+    if (ev.hook_event_name === 'SubagentStop') { if (sub) sub.endAt = sub.endAt || now; return; }
+    if (!sub) {
+      if (s.dead.has(aid) || s.subs.size >= MAX_SUBS_PER_SESSION) return;   // уже ушёл (запоздавшее событие) или слишком много: не рисуем
+      sub = { id: aid, type: String(ev.agent_type || 'agent').slice(0, 24), status: 'working', tool: '', detail: '', started: now, last: now, endAt: 0, errAt: 0 };
+      s.subs.set(aid, sub);
+    }
+    sub.last = now;
+    switch (ev.hook_event_name) {
+      case 'PreToolUse': sub.status = 'working'; sub.tool = String(ev.tool_name || '').slice(0, 40); sub.detail = detail; break;
+      case 'PermissionRequest': sub.status = 'waiting'; sub.tool = String(ev.tool_name || '').slice(0, 40); sub.detail = detail; break;
+      case 'PostToolUse': sub.status = 'working'; break;
+      case 'PostToolUseFailure': sub.errAt = now; break;
+    }
+    return;
+  }
   switch (ev.hook_event_name) {
     case 'SessionStart': s.status = 'idle'; s.tool = ''; s.detail = ''; break;
     case 'UserPromptSubmit': s.status = 'working'; s.tool = 'думает'; s.detail = detail; break;
     case 'PreToolUse': s.status = 'working'; s.tool = String(ev.tool_name || '').slice(0, 40); s.detail = detail; break;
     case 'PostToolUse': s.status = 'working'; break;
+    case 'PostToolUseFailure': s.errAt = now; break;       // инструмент упал: бот на пару секунд «краснеет»
     case 'PermissionRequest': s.status = 'waiting'; s.tool = String(ev.tool_name || '').slice(0, 40); s.detail = detail; break;
     case 'Notification':
       if (ev.notification_type === 'idle_prompt' || /waiting for your input/i.test(msg)) { s.status = 'idle'; s.tool = ''; }
       else { s.status = 'waiting'; s.tool = msg.slice(0, 80); }
       break;
-    case 'Stop': s.status = 'idle'; s.tool = ''; s.detail = ''; break;
-    case 'SessionEnd': s.status = 'gone'; break;
+    case 'Stop': s.status = 'idle'; s.tool = ''; s.detail = ''; endSubs(s, now); break;
+    case 'SessionEnd': s.status = 'gone'; endSubs(s, now); break;
   }
   if (s.ppid && !procTable.has(s.ppid)) scan();
 }
@@ -273,10 +305,23 @@ setInterval(() => {
   const now = Date.now();
   for (const [id, s] of sessions) {
     const quiet = now - s.last;
-    if ((s.status === 'gone' && quiet > 15e3) || quiet > 30 * 60e3) sessions.delete(id);
+    if ((s.status === 'gone' && quiet > 15e3) || quiet > 30 * 60e3) { sessions.delete(id); continue; }
     else if (s.status === 'working' && quiet > 10 * 60e3) { s.status = 'idle'; s.tool = ''; }
+    for (const [sid, x] of s.subs) {
+      const over = x.endAt ? now > Math.max(x.endAt + SUB_LINGER, x.started + SUB_MIN_SHOW) : now - x.last > 15 * 60e3;   // без событий 15 мин: подвис, убираем
+      if (over) { s.subs.delete(sid); s.dead.add(sid); if (s.dead.size > 200) s.dead.delete(s.dead.values().next().value); }
+    }
   }
 }, 10e3);
+
+// Субагенты сессии как отдельные записи: тот же вид (цвет), флаг sub, своя подпись по типу («Explore», «Plan»…).
+function subRows(s, parentId, kind, now) {
+  return [...s.subs.values()].sort((a, b) => a.started - b.started).map(x => {
+    const done = x.endAt && now >= x.endAt;
+    return { id: `${parentId}:sub:${x.id}`, kind, sub: true, subType: x.type, name: `${LABEL[kind]} › ${x.type}`,
+      status: done ? 'idle' : x.status, tool: done ? '' : x.tool, detail: done ? '' : x.detail, hooks: true, err: now - x.errAt < ERR_SHOW };
+  });
+}
 
 function state() {
   const now = Date.now();
@@ -297,15 +342,19 @@ function state() {
     if (a.kind === 'ollama') continue;                  // лама добавляется ниже, по загруженной модели
     const s = byPid.get(a.pid);
     const fresh = s && now - s.last < 10 * 60e3;
+    const id = `${a.kind}-${a.pid}`;
     out.push({
-      id: `${a.kind}-${a.pid}`,
+      id,
       kind: a.kind,
       name: LABEL[a.kind] + (s?.folder ? ` · ${s.folder}` : ''),
       status: fresh ? s.status : (a.cpuBusy ? 'working' : 'idle'),
       tool: fresh ? s.tool : '',
       detail: fresh && s.status !== 'idle' ? s.detail : '',
       hooks: !!s,
+      ctx: fresh ? ctxFrac(s) : undefined,
+      err: !!fresh && now - s.errAt < ERR_SHOW,
     });
+    if (fresh && s.subs.size) out.push(...subRows(s, id, a.kind, now));
   }
   // лама в офисе, пока Ollama открыта (сервер отвечает или виден её процесс); работает, пока модель отвечает
   const model = ollama.models[0] || ollama.running[0] || ollama.last;
@@ -315,7 +364,10 @@ function state() {
   }
   // Сессия без найденного процесса (или сканирование недоступно): показываем, пока от неё были события за 2 минуты.
   const linked = new Set(byPid.values());
-  for (const s of live) if (!linked.has(s) && (!lastScanOk || now - s.last < 120e3)) out.push({ id: s.id, kind: s.kind, name: LABEL[s.kind] + (s.folder ? ` · ${s.folder}` : ''), status: s.status, tool: s.tool, detail: s.status !== 'idle' ? s.detail : '', hooks: true });
+  for (const s of live) if (!linked.has(s) && (!lastScanOk || now - s.last < 120e3)) {
+    out.push({ id: s.id, kind: s.kind, name: LABEL[s.kind] + (s.folder ? ` · ${s.folder}` : ''), status: s.status, tool: s.tool, detail: s.status !== 'idle' ? s.detail : '', hooks: true, ctx: ctxFrac(s), err: now - s.errAt < ERR_SHOW });
+    if (s.subs.size) out.push(...subRows(s, s.id, s.kind, now));
+  }
   return out;
 }
 

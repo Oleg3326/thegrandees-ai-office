@@ -153,7 +153,7 @@ Say 'the server starts by itself while Wallpaper Engine is open and stops when i
 Start-Process wscript.exe -ArgumentList "`"$App\watch.vbs`"" -WorkingDirectory $App
 
 # anonymous install counter: on the first install only, download a tiny empty file from GitHub; the author sees only its download count (nothing is sent)
-if ($fresh -and -not $env:GITHUB_ACTIONS) {
+if ($fresh -and -not $env:GITHUB_ACTIONS -and -not $env:TGTI_SOURCE) {   # fork: no counter request for local installs
   try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 "https://github.com/$Repo/releases/download/stats/install-windows.txt" | Out-Null } catch { }
 }
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue

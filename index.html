@@ -771,10 +771,13 @@ const outGap = () => FAST ? rand(12, 22) : rand(240, 600);         // как ч�
 // новый агент приезжает на такси: пока такси не остановилось у входа, его не видно
 function newAgent(s) {
   const t = performance.now() / 1000;
+  const sub = !!s.sub;                                  // субагент: без машины, заходит с улицы пешком и сразу к столу
   const a = { id: s.id, kind: KIND[s.kind] ? s.kind : 'claude', name: s.name, status: s.status, tool: s.tool || '', tagNo: 1,
-    place: curbPlace(), x: 192, y: 179, path: [], pending: null, desk: null, spot: null, leaving: false, arriving: true, brk: null,
+    sub, subType: s.subType || '',
+    place: curbPlace(), x: 192, y: sub ? 181 : 179, path: [], pending: null, desk: null, spot: null, leaving: false, arriving: !sub, brk: null,
     nextBreak: t + (FAST ? 8 : rand(90, 240)), nextOut: t + (HASH.includes('bus') ? 4 : outGap()), nextSay: t + rand(4, 10), say: null, greeted: false,
-    dir: 'down', ph: Math.random() * 6, idleSince: s.status === 'idle' ? t : null };
+    dir: sub ? 'up' : 'down', ph: Math.random() * 6, idleSince: s.status === 'idle' ? t : null };
+  if (sub) a.nextBreak = a.nextOut = t + 1e9;           // субагент не ходит за кофе и на лавочку: работа короткая
   agents.set(s.id, a);
   return a;
 }
@@ -809,13 +812,14 @@ function leave(a) {
   if (a.desk) { a.desk.owner = null; a.desk = null; }
   if (a.brk) { if (a.spot !== a.brk.spot) a.brk.spot.owner = null; a.brk = null; }
   if (a.spot) { a.spot.owner = null; a.spot = null; }
+  if (a.sub) return;                                    // субагент просто выходит за дверь и пропадает (см. step)
   say(a, pick([...LINES.bye, ...LINES.byeRide[rideOf(a)]]), performance.now() / 1000, true);
   catGreet(a, true);
   maybeBus(a, performance.now() / 1000);
 }
 // кожен вихід на вулицю будь-якої моделі може закінчитись бусом (після паузи між бусами)
 function maybeBus(a, t) {
-  if (bus || missile || brief?.team.includes(a)) return;
+  if (bus || missile || a.sub || brief?.team.includes(a)) return;
   if (HASH.includes('bus') || (t > busNext && Math.random() < (FAST ? 1 : 0.5))) bus = { a, state: 'armed', at: t, exit: a.leaving };
 }
 // сам агент нікуди не зривається, поки не побув на місці хоча б MIN_STAY секунд; зовнішні події (нова задача, бус, вихід) діють одразу
@@ -843,7 +847,7 @@ let cafeSince = 0;
 // отдыхающий выходит посидеть на лавочке справа; иногда по пути его встречает бус
 // кнопка «Бусифікувати»: бус приїжджає зараз; першим під роздачу GPT, якщо він в офісі
 function busTarget() {
-  const ok = a => !a.arriving && !a.leaving && !a.away && !a.held;
+  const ok = a => !a.sub && !a.arriving && !a.leaving && !a.away && !a.held;
   const list = [...agents.values()].filter(ok);
   return list.find(a => a.kind === 'chatgpt') || list.find(a => a.status !== 'working') || list[0] || null;
 }
@@ -907,6 +911,10 @@ function sync(list) {
     seen.add(s.id);
     const a = agents.get(s.id) || newAgent(s);
     a.name = s.name; a.tool = s.tool || ''; a.detail = s.detail || ''; a.hooks = !!s.hooks;
+    a.ctx = s.ctx;                                       // доля заполненного контекста 0..1 (только у сессий с хуками)
+    const err = !!s.err;                                 // инструмент упал: глаза и монитор краснеют
+    if (err && !a.err && !a.arriving) say(a, pick(LINES.err), t, true);
+    a.err = err;
     if (a.detail && /^(Edit|MultiEdit|Write|NotebookEdit)$/.test(a.tool)) (a.files ||= new Set()).add(a.detail);
     if (a.status !== s.status) { a.status = s.status; a.idleSince = s.status === 'idle' ? t : null; if (s.status === 'waiting' && !a.arriving) { say(a, pick(LINES.wait), t, true); sfx.ding(); } }
     a.leaving = false;
@@ -914,7 +922,7 @@ function sync(list) {
   for (const a of [...agents.values()]) if (!seen.has(a.id) && !a.leaving) leave(a);
   // номера, если открыто несколько одинаковых
   const count = {};
-  for (const a of [...agents.values()].filter(x => !x.leaving)) { count[a.kind] = (count[a.kind] || 0) + 1; a.tagNo = count[a.kind]; }
+  for (const a of [...agents.values()].filter(x => !x.leaving && !x.sub)) { count[a.kind] = (count[a.kind] || 0) + 1; a.tagNo = count[a.kind]; }
 }
 
 function step(dt, t) {
@@ -925,6 +933,7 @@ function step(dt, t) {
       continue;
     }
     if (a.arriving) continue;                          // ещё едет в машине
+    if (a.sub && atCurb(a)) { agents.delete(a.id); continue; }   // субагент дошёл до двери: уходит без машины
     if (a.held) { chatTick(a, t); continue; }          // стоит, его проверяют
     breakTick(a, t);
     if (!a.path.length) {
@@ -933,7 +942,7 @@ function step(dt, t) {
       if (!a.path.length) a.dir = a.place.face || 'down';
     }
     if (a.path.length) {
-      const p = a.path[0], dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy), v = 34 * dt;
+      const p = a.path[0], dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy), v = 34 * (a.sub ? 1.5 : 1) * dt;   // субагент торопится
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) a.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
       if (d <= v) { a.x = p.x; a.y = p.y; a.path.shift(); } else { a.x += dx / d * v; a.y += dy / d * v; }
     }
@@ -989,6 +998,7 @@ const actUA = (a, act) => act === 'work' && doing(a) ? doing(a) : act === 'ride'
 const LINES = {
   hello: ['Привіт!', 'Доброго дня!', 'Я на місці'], helloNight: ['Доброї ночі!', 'Нічна зміна'],
   bye: ['Бувай!', 'До зустрічі!', 'Па-па!'],
+  err: ['Ой, помилка!', 'Знову червоне…', 'Це не я, це інструмент', 'Спробую ще раз'],
   byeRide: { taxi: ['Викликаю таксі'], tesla: ['Тесла вже чекає', 'Їду на Теслі'], limo: ['Подайте лімузин', 'Мій лімузин!'] },
   back: ['Відслужив!', 'Я повернувся!', 'Ледве відпустили', 'Де моя кава?'],
   bench: ['Свіже повітря', 'Гарно тут', 'Посиджу трохи'],
@@ -1357,7 +1367,7 @@ function drawBot(a, t) {
   const body = k.body, bl = shade(body, 1.3), bd = shade(body, 0.72), obd = shade(body, 0.4);
   const walking = a.path.length > 0 && !a.held, act = activity(a, t), working = act === 'work', waiting = act === 'wait' || act === 'check';
   if (!sit) Q(X - 7, Y - 1, 15, 2, 'rgba(0,0,0,0.28)');
-  const blink = act === 'sleep' || (a.ph % 3.7) < 0.12, eye = waiting ? '#ffcf5c' : k.eye;
+  const blink = act === 'sleep' || (a.ph % 3.7) < 0.12, eye = waiting ? '#ffcf5c' : a.err ? ((t * 4 | 0) % 2 ? '#ff4d4d' : '#ffb3b3') : k.eye;
   const talk = a.say && a.say.until > t && (t * 6 | 0) % 2;
   if (a.kind === 'ollama') llamaHead(X, T, dir, !blink, talk, t);
   else {
@@ -1373,6 +1383,8 @@ function drawBot(a, t) {
     else if (dir === 'right') { Q(X - 1, T + 6, 9, 5, '#1D1A33'); eyeQ(X + 1); eyeQ(X + 5); }
     else { Q(X - 4, T + 7, 9, 4, hd); Q(X - 3, T + 8, 7, 1, shade(head, 0.62)); Q(X - 3, T + 10, 7, 1, shade(head, 0.62)); }
   }
+  // субагент: жёлтая каска, чтобы отличать от «настоящего» бота
+  if (a.sub) { Q(X - 6, T + 2, 13, 3, '#ffcf5c'); Q(X - 6, T + 2, 13, 1, '#fff0a8'); Q(X - 6, T + 4, 13, 1, '#c99a1a'); Q(X - 3, T, 7, 2, '#ffcf5c'); Q(X - 3, T, 7, 1, '#fff0a8'); }
   // тело, огонёк на груди, руки
   Q(X - 6, T + 14, 13, 7, obd); Q(X - 5, T + 14, 11, 6, body); Q(X - 5, T + 14, 11, 1, bl); Q(X + 4, T + 15, 1, 5, bd);
   if (a.kind === 'ollama') {                            // на худі біла лама, ззаду пухнастий хвостик
@@ -1442,15 +1454,30 @@ function neonTag(name, cx, y, col) {
   Q(X - 4, Y - 3, tw + 8, 16, '#0e0b1c'); Q(X - 3, Y - 2, tw + 6, 14, col); Q(X - 2, Y - 1, tw + 4, 12, '#17142c');
   textQ(name, X, Y + 1, 2, col);
 }
+// шкала заполнения контекста: зелёная до 60%, жёлтая до 85%, дальше мигает красным
+function ctxBar(cx, ly, p, t) {
+  const w = 26, X = Math.round(cx * S - w / 2), Y = Math.round(ly * S) + 14;
+  Q(X - 1, Y - 1, w + 2, 5, '#0e0b1c'); Q(X, Y, w, 3, '#2a2548');
+  Q(X, Y, Math.max(1, Math.round(w * p)), 3, p < 0.6 ? '#7fe0b4' : p < 0.85 ? '#ffcf5c' : (t * 4 | 0) % 2 ? '#ff5a5a' : '#ff9a9a');
+}
+// стопка бумаг на полу у стола: растёт вместе с контекстом (и листок летает, когда уже почти всё)
+function paperPile(px, py, p, t) {
+  const n = p > 0.9 ? 6 : p > 0.75 ? 4 : 2;
+  Q(px - 1, py + 1, 12, 2, 'rgba(0,0,0,0.2)');
+  for (let i = 0; i < n; i++) { Q(px, py - i * 2, 10, 2, i % 2 ? '#f7f5ff' : '#e3def5'); Q(px, py - i * 2, 10, 1, '#c9c3e6'); }
+  Q(px + 2, py - n * 2 + 1, 5, 1, '#9a92c4');
+  if (p > 0.9) { const k = (t * 1.2) % 1; Q(px + 3 + Math.round(Math.sin(t * 3) * 3), py - n * 2 - 3 - Math.round(k * 4), 6, 4, '#f7f5ff'); Q(px + 4 + Math.round(Math.sin(t * 3) * 3), py - n * 2 - 2 - Math.round(k * 4), 4, 1, '#9a92c4'); }
+}
 function drawLabel(a, t) {
   if (a.arriving || a.away) return;
   const k = KIND[a.kind], x = a.x, top = (Math.round(a.y * S) - 22 + (sitting(a) ? 4 : 0)) / S;
-  const name = k.short + (a.tagNo > 1 ? a.tagNo : '');
+  const name = a.sub ? (a.subType || 'SUB').toUpperCase().slice(0, 9) : k.short + (a.tagNo > 1 ? a.tagNo : '');
   const sofa = arrived(a) && a.place.sit && !a.place.desk && a.place.lane === 82;
   const cafeR = a.brk?.cafe && arrived(a) && a.place === CAFE[1];   // за столиком таблички не налазять одна на одну
   const ly = top - 9 - ((sofa && CHILL.indexOf(a.place) % 2) || cafeR ? 7 : 0);
   a.labelY = ly;
   neonTag(name, x, ly, k.tag || k.head);
+  if (!a.sub && a.ctx > 0.02) ctxBar(x, ly, a.ctx, t);   // шкала контекста под табличкой
   if (!arrived(a)) return;
   const bx = x + 6, by = top + 1, act = activity(a, t);
   if (act === 'wait' || (act === 'check' && bus && bus.state !== 'come' && !bus.free)) {
@@ -1498,7 +1525,10 @@ function drawDesk(d, t) {
   Q(CX - 6, Y + 6, 13, 2, '#2d2a40'); Q(CX - 1, Y + 3, 3, 3, '#3a3650');
   Q(X + 8, Y - 16, 32, 20, '#08070f'); Q(X + 9, Y - 15, 30, 18, '#1f1c30'); Q(X + 9, Y - 15, 30, 1, '#3a3656');
   const sx = X + 11, sy = Y - 13, sw = 26, sh = 13;
-  if (here && o.status === 'working') {
+  if (here && o.err) {
+    // инструмент упал: монитор мигает красным с белым «!»
+    Q(sx, sy, sw, sh, (t * 4 | 0) % 2 ? '#8c1f2b' : '#4a1018'); Q(sx + 12, sy + 2, 2, 6, '#f7f5ff'); Q(sx + 12, sy + 10, 2, 2, '#f7f5ff');
+  } else if (here && o.status === 'working') {
     // бегущий код с подсветкой
     Q(sx, sy, sw, sh, '#0e1630');
     const scroll = t * 1.5 | 0;
@@ -1541,6 +1571,7 @@ function drawDesk(d, t) {
   Q(X + 1, Y - 4, 7, 4, lit ? '#ffe7a3' : '#4a4560'); Q(X + 1, Y - 4, 7, 1, lit ? '#fff6d8' : '#5e5878'); Q(X + 2, Y, 5, 1, lit ? '#fff6d8' : '#3a3650');
   // сиденье кресла
   discQ(CX, Y + 36, 8, '#141220', 0.7); discQ(CX, Y + 35, 7, '#2b2740', 0.6); Q(CX - 4, Y + 32, 8, 1, '#3e3958');
+  if (o && !o.sub && o.ctx > 0.5) paperPile(CX + 13, Y + 41, o.ctx, t);   // контекст разросся: бумаги вокруг стола
 }
 function drawChairBack(d) {
   const CX = d.cx * S, Y = d.y0 * S;
@@ -1631,7 +1662,7 @@ const pickRide = kind => kind === 'chatgpt' ? (Math.random() < 0.25 || HASH.incl
 const rideOf = a => a.ride || (a.ride = pickRide(a.kind));
 const rides = {};
 const laneFree = (x0, x1) => !cars.some(c => !c.bus && Math.abs(c.y - 192) < 5 && c.x > x0 && c.x < x1);
-const rideNeeded = type => [...agents.values()].some(a => rideOf(a) === type && (a.arriving || (atCurb(a) && !a.held && bus?.a !== a)));
+const rideNeeded = type => [...agents.values()].some(a => !a.sub && rideOf(a) === type && (a.arriving || (atCurb(a) && !a.held && bus?.a !== a)));
 function rideStep(type, dt, t) {
   let r = rides[type];
   if (!r) {
@@ -1644,7 +1675,7 @@ function rideStep(type, dt, t) {
     if (d <= 0.3) { r.x = STOP_X; r.v = 0; r.state = 'stop'; r.at = t; sfx.horn(type); }
   } else if (r.state === 'stop') {
     // выпускаем приехавших по одному, сажаем тех, кто ждёт у бордюра
-    const s2 = t - r.at, mine = [...agents.values()].filter(a => rideOf(a) === type);
+    const s2 = t - r.at, mine = [...agents.values()].filter(a => !a.sub && rideOf(a) === type);
     let n = 0;
     if (s2 > 0.8) for (const a of mine) {
       if (a.arriving) {
@@ -2465,7 +2496,8 @@ function panel(t) {
   const u = Math.max(2, Math.round(2 * dpr)), fs = fontPx(2 * dpr), small = fs, lh = Math.round(fs * 1.3), pad = 6 * u;
   const list = [...agents.values()].filter(a => !a.leaving);
   const k = kyiv(), clock = `${String(k.h).padStart(2, '0')}:${String(k.m).padStart(2, '0')}`;
-  const head = 'AI-ОФІС', sub = online ? `в офісі: ${list.length}` : demoOn ? 'демо · сервер не запущено' : 'сервер не запущено';
+  const nSub = list.filter(a => a.sub).length;
+  const head = 'AI-ОФІС', sub = online ? `в офісі: ${list.length - nSub}${nSub ? ` · субагентів: ${nSub}` : ''}` : demoOn ? 'демо · сервер не запущено' : 'сервер не запущено';
   const hint = online ? '' : 'Свої ШІ: див. опис Workshop';   // без сервера: підказка, як підключити своїх
   const sun = sunTimes(), sunTxt = `схід ${kyivHM(sun.rise)} · захід ${kyivHM(sun.set)} · ${APP_VERSION}`;
   const opts = [
@@ -2478,7 +2510,8 @@ function panel(t) {
   ctx.textBaseline = 'middle';
   const rows = list.map(a => {
     const act = activity(a, t);
-    return { a, act, name: a.name, st: actUA(a, act) + (act === 'wait' && a.detail ? ' · ' + a.detail : '') };
+    const ctxTxt = !a.sub && a.ctx > 0.05 ? ` · контекст ${Math.round(a.ctx * 100)}%` : '';
+    return { a, act, name: a.name, st: actUA(a, act) + (act === 'wait' && a.detail ? ' · ' + a.detail : '') + (a.err ? ' · помилка' : '') + ctxTxt };
   });
   const btnH = lh + 2 * u, gap = 2 * u;
   ctx.font = `${small}px ${FONT_UI}`;
@@ -2616,7 +2649,7 @@ function loop(now) {
 let online = false, seenVersion = '';
 async function poll() {
   // #leave: в демо Codex через 15 с уходит, чтобы проверить такси
-  if (DEMO) { online = true; sync(DEMO_LIST.filter(x => !(HASH.includes('leave') && x.id === 'd2' && performance.now() > 15000))); return; }
+  if (DEMO) { online = true; sync(DEMO_LIST.filter(x => !(HASH.includes('leave') && x.id === 'd2' && performance.now() > 15000) && !(x.sub && (performance.now() / 1000) % 45 > 28))); return; }
   try {
     const res = await fetch(SERVER + '/state', { cache: 'no-store', signal: AbortSignal.timeout(1500) });
     const data = await res.json();
@@ -2653,7 +2686,10 @@ function withDemo(real) {
   return [...real, ...demo];
 }
 const DEMO_LIST = [
-  { id: 'd1', kind: 'claude', name: 'Claude Code · tgti', status: 'working', tool: 'Edit', detail: 'JournalPage.tsx', hooks: true },
+  { id: 'd1', kind: 'claude', name: 'Claude Code · tgti', status: 'working', tool: 'Edit', detail: 'JournalPage.tsx', hooks: true, ctx: 0.82 },
+  // субагенты Claude Code (в демо появляются на ~28 секунд каждые 45); у Plan «упал инструмент» — красные глаза и монитор
+  { id: 'd1:sub:1', kind: 'claude', sub: true, subType: 'Explore', name: 'Claude Code › Explore', status: 'working', tool: 'Grep', detail: 'TODO', hooks: true },
+  { id: 'd1:sub:2', kind: 'claude', sub: true, subType: 'Plan', name: 'Claude Code › Plan', status: 'working', tool: 'Read', detail: 'App.tsx', hooks: true, err: true },
   { id: 'd2', kind: 'codex', name: 'Codex', status: 'waiting', tool: 'Bash', detail: 'git push', hooks: true },
   { id: 'd3', kind: 'chatgpt', name: 'ChatGPT', status: 'working' },
   { id: 'd4', kind: 'claude-app', name: 'Claude', status: 'idle' },
