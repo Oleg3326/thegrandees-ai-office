@@ -83,23 +83,45 @@ function textQ(s, x, y, px, col, hi) {
   }
 }
 
-// ---------- время: всегда киевское, день и ночь по настоящему восходу и закату ----------
-const KFMT = (() => {
-  for (const timeZone of ['Europe/Kyiv', 'Europe/Kiev']) {
-    try { return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', second: '2-digit', month: 'numeric', hourCycle: 'h23' }); } catch {}
+// ---------- время: по выбранному региону, день и ночь по настоящему восходу и закату ----------
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+// регион: часовой пояс и координаты для часов и восхода/заката; по умолчанию Москва, меняется кнопкой в панели
+const REGIONS = [
+  { id: 'moscow',      name: 'Москва',          tz: 'Europe/Moscow',      lat: 55.75, lon: 37.62 },
+  { id: 'spb',         name: 'Санкт-Петербург', tz: 'Europe/Moscow',      lat: 59.93, lon: 30.34 },
+  { id: 'kaliningrad', name: 'Калининград',     tz: 'Europe/Kaliningrad', lat: 54.71, lon: 20.51 },
+  { id: 'samara',      name: 'Самара',          tz: 'Europe/Samara',      lat: 53.20, lon: 50.15 },
+  { id: 'yekaterinburg', name: 'Екатеринбург',  tz: 'Asia/Yekaterinburg', lat: 56.84, lon: 60.61 },
+  { id: 'novosibirsk', name: 'Новосибирск',     tz: 'Asia/Novosibirsk',   lat: 55.03, lon: 82.92 },
+  { id: 'vladivostok', name: 'Владивосток',     tz: 'Asia/Vladivostok',   lat: 43.12, lon: 131.89 },
+  { id: 'minsk',       name: 'Минск',           tz: 'Europe/Minsk',       lat: 53.90, lon: 27.57 },
+  { id: 'kyiv',        name: 'Киев',            tz: 'Europe/Kyiv',        lat: 50.45, lon: 30.52 },
+];
+let regionId = REGIONS.some(r => r.id === store.get('office-region')) ? store.get('office-region') : 'moscow';
+const region = () => REGIONS.find(r => r.id === regionId);
+const fmtCache = {};
+function fmtFor(tz) {
+  if (tz in fmtCache) return fmtCache[tz];
+  let f = null;
+  for (const timeZone of tz === 'Europe/Kyiv' ? ['Europe/Kyiv', 'Europe/Kiev'] : [tz]) {
+    try { f = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', second: '2-digit', month: 'numeric', hourCycle: 'h23' }); break; } catch {}
   }
-  return null;
-})();
-function kyiv() {
-  const d = new Date();
-  if (!KFMT) return { h: d.getHours(), m: d.getMinutes(), s: d.getSeconds(), mon: d.getMonth() + 1 };
-  const o = {}; for (const p of KFMT.formatToParts(d)) o[p.type] = +p.value;
+  return fmtCache[tz] = f;
+}
+// местное время выбранного региона
+function localTime() {
+  const d = new Date(), f = fmtFor(region().tz);
+  if (!f) return { h: d.getHours(), m: d.getMinutes(), s: d.getSeconds(), mon: d.getMonth() + 1 };
+  const o = {}; for (const p of f.formatToParts(d)) o[p.type] = +p.value;
   return { h: o.hour % 24, m: o.minute, s: o.second, mon: o.month };
 }
 const utcMin = (d = new Date()) => d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60;
-// восход и закат в Киеве на сегодня (формулы NOAA), в минутах от полуночи UTC
+// восход и закат в выбранном регионе на сегодня (формулы NOAA), в минутах от полуночи UTC
 function sunTimes(d = new Date()) {
-  const lat = 50.45 * Math.PI / 180, lon = 30.52;
+  const lat = region().lat * Math.PI / 180, lon = region().lon;
   const N = Math.round((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - Date.UTC(d.getUTCFullYear(), 0, 0)) / 864e5);
   const gm = 2 * Math.PI / 365 * (N - 1);
   const eqt = 229.18 * (0.000075 + 0.001868 * Math.cos(gm) - 0.032077 * Math.sin(gm) - 0.014615 * Math.cos(2 * gm) - 0.040849 * Math.sin(2 * gm));
@@ -107,11 +129,16 @@ function sunTimes(d = new Date()) {
   const ha = Math.acos(Math.cos(90.833 * Math.PI / 180) / (Math.cos(lat) * Math.cos(decl)) - Math.tan(lat) * Math.tan(decl)) * 180 / Math.PI;
   return { rise: 720 - 4 * (lon + ha) - eqt, set: 720 - 4 * (lon - ha) - eqt };
 }
-// минуты UTC в киевское «ЧЧ:ММ»
-function kyivHM(m) {
-  const k = kyiv(), off = Math.round((((k.h * 60 + k.m) - Math.floor(utcMin())) % 1440 + 1440) % 1440 / 30) * 30;
+// минуты UTC в местное «ЧЧ:ММ» выбранного региона
+function localHM(m) {
+  const k = localTime(), off = Math.round((((k.h * 60 + k.m) - Math.floor(utcMin())) % 1440 + 1440) % 1440 / 30) * 30;
   const v = Math.round(m + off + 1440) % 1440;
   return `${String(v / 60 | 0).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
+}
+function setRegion(id) {
+  if (!REGIONS.some(r => r.id === id)) return;
+  regionId = id; store.set('office-region', id);
+  refreshScene();
 }
 // сумерки: от 40 минут до восхода до 30 после, и от 30 минут до заката до 40 после
 function phaseNow() {
@@ -126,16 +153,12 @@ let phase = phaseNow();
 // ---------- сезон: авто по месяцу или выбранный кнопкой ----------
 const SEASONS = ['auto', 'spring', 'summer', 'autumn', 'winter'];
 const SEASON_UA = { auto: 'Авто', spring: 'Весна', summer: 'Літо', autumn: 'Осінь', winter: 'Зима' };
-const store = {
-  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
-};
 let seasonPick = SEASONS.includes(store.get('office-season')) ? store.get('office-season') : 'auto';
 function seasonNow() {
   const forced = HASH.match(/spring|summer|autumn|winter/);
   if (forced) return forced[0];
   if (seasonPick !== 'auto') return seasonPick;
-  const m = kyiv().mon;
+  const m = localTime().mon;
   return m === 12 || m <= 2 ? 'winter' : m <= 5 ? 'spring' : m <= 8 ? 'summer' : 'autumn';
 }
 let season = seasonNow();
@@ -1947,8 +1970,8 @@ function frame(t, dt) {
   drawBacklight(t);
   for (const s of treeSprites) g.drawImage(s.c, s.x + Math.round(Math.sin(t * 1.4 + s.seed) * gust * 2.4) / S, s.y, s.w, s.w);
   cur = g;
-  // часы: киевское время, секундная стрелка тикает
-  const k = kyiv(), hh = (k.h % 12 + k.m / 60) / 12 * 6.283 - 1.571, mm = (k.m + k.s / 60) / 60 * 6.283 - 1.571, ss = k.s / 60 * 6.283 - 1.571;
+  // часы: местное время региона, секундная стрелка тикает
+  const k = localTime(), hh = (k.h % 12 + k.m / 60) / 12 * 6.283 - 1.571, mm = (k.m + k.s / 60) / 60 * 6.283 - 1.571, ss = k.s / 60 * 6.283 - 1.571;
   lineQ(524, 64, 524 + Math.cos(mm) * 7, 64 + Math.sin(mm) * 7, '#1D1A33');
   lineQ(524, 64, 524 + Math.cos(hh) * 4.5, 64 + Math.sin(hh) * 4.5, '#4A37C9');
   lineQ(524, 64, 524 + Math.cos(ss) * 7.5, 64 + Math.sin(ss) * 7.5, '#ff5c5c'); q(524, 64, '#1D1A33');
@@ -2092,6 +2115,7 @@ const ICON5 = {
   rain:   { rows: ['.###.', '#####', '.....', 'o.o.o', '.o.o.'], col: '#c9c3e6', col2: '#7fb4ff' },
   storm:  { rows: ['.###.', '#####', '..o..', '.oo..', '..o..'], col: '#9a92c4', col2: '#ffcf5c' },
   snow:   { rows: ['#.#.#', '..#..', '#####', '..#..', '#.#.#'], col: '#e0f2ff' },
+  clock:  { rows: ['.###.', '#.o.#', '#.oo#', '#...#', '.###.'], col: '#E0DAFA', col2: '#ffcf5c' },
   fog:    { rows: ['####.', '.....', '.####', '.....', '####.'], col: '#b9b2d6' },
   wind:   { rows: ['####.', '....#', '###..', '.....', '#####'], col: '#a8e4ff' },
   soundOn:  { rows: ['..#..', '.##.o', '###.o', '.##.o', '..#..'], col: '#E0DAFA', col2: '#7fe0b4' },
@@ -2109,12 +2133,13 @@ let btns = [], hover = -1;
 function panel(t) {
   const u = Math.max(2, Math.round(2 * dpr)), fs = fontPx(2 * dpr), small = fs, lh = Math.round(fs * 1.3), pad = 6 * u;
   const list = [...agents.values()].filter(a => !a.leaving);
-  const k = kyiv(), clock = `${String(k.h).padStart(2, '0')}:${String(k.m).padStart(2, '0')}`;
+  const k = localTime(), clock = `${String(k.h).padStart(2, '0')}:${String(k.m).padStart(2, '0')}`;
   const nSub = list.filter(a => a.sub).length;
   const head = 'AI-ОФІС', sub = online ? `в офісі: ${list.length - nSub}${nSub ? ` · субагентів: ${nSub}` : ''}` : demoOn ? 'демо · сервер не запущено' : 'сервер не запущено';
   const hint = online ? '' : 'Свої ШІ: див. опис Workshop';   // без сервера: підказка, як підключити своїх
-  const sun = sunTimes(), sunTxt = `схід ${kyivHM(sun.rise)} · захід ${kyivHM(sun.set)} · ${APP_VERSION}`;
+  const sun = sunTimes(), sunTxt = `схід ${localHM(sun.rise)} · захід ${localHM(sun.set)} · ${APP_VERSION}`;
   const opts = [
+    { key: 'region', txt: `Регион: ${region().name}`, ic: ICON5.clock },
     { key: 'season', txt: `Сезон: ${SEASON_UA[season]}${seasonPick === 'auto' ? ' · авто' : ''}`, ic: ICON5[season] },
     { key: 'weather', txt: `Погода: ${WEATHER_UA[weather]}${weatherPick === 'auto' ? ' · авто' : ''}`, ic: ICON5[weather] },
     { key: 'sound', txt: soundOn ? `Звук: увімк · ${Math.round(volume * 100)}%` : 'Звук: вимк', ic: soundOn ? ICON5.soundOn : ICON5.soundOff },
@@ -2213,7 +2238,8 @@ function panel(t) {
 const btnAt = e => { const px = e.clientX * dpr, py = e.clientY * dpr; return btns.findIndex(bt => px >= bt.x && px <= bt.x + bt.w && py >= bt.y && py <= bt.y + bt.h); };
 addEventListener('click', e => {
   const bt = btns[btnAt(e)]; if (!bt) return;
-  if (bt.key === 'season') setSeason(SEASONS[(SEASONS.indexOf(seasonPick) + 1) % SEASONS.length]);
+  if (bt.key === 'region') setRegion(REGIONS[(REGIONS.findIndex(r => r.id === regionId) + 1) % REGIONS.length].id);
+  else if (bt.key === 'season') setSeason(SEASONS[(SEASONS.indexOf(seasonPick) + 1) % SEASONS.length]);
   else if (bt.key === 'weather') setWeather(WEATHERS[(WEATHERS.indexOf(weatherPick) + 1) % WEATHERS.length]);
   else if (bt.key === 'demo') setDemo(!demoOn);
   else setSound(!soundOn);
