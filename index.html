@@ -20,7 +20,7 @@
 // поэтому у мебели, ботов и улицы есть мелкие детали. Буфер растягивается на экран без сглаживания.
 // Агенты = открытые AI-программы на ПК (Claude Code, Claude, Codex, ChatGPT). Данные: http://127.0.0.1:7777/state.
 // Поверх сцены: сезоны и погода, ветер за зданием, лампы на столах, перерывы на кофе, такси, реплики, панель агентов.
-const APP_VERSION = 'v1.7';                 // показується в панелі справа; з 21.10.2026 нумерація v1.1, далі +0.1 на кожен випуск
+const APP_VERSION = 'v1.8';                 // показується в панелі справа; з 21.10.2026 нумерація v1.1, далі +0.1 на кожен випуск
 const W = 384, H = 216, S = 2, SERVER = 'http://127.0.0.1:7777';
 const HASH = location.hash;
 const SHOW_HUD = !HASH.includes('nohud');
@@ -152,7 +152,7 @@ let phase = phaseNow();
 
 // ---------- сезон: авто по месяцу или выбранный кнопкой ----------
 const SEASONS = ['auto', 'spring', 'summer', 'autumn', 'winter'];
-const SEASON_UA = { auto: 'Авто', spring: 'Весна', summer: 'Літо', autumn: 'Осінь', winter: 'Зима' };
+const SEASON_UA = { auto: 'Авто', spring: 'Весна', summer: 'Лето', autumn: 'Осень', winter: 'Зима' };
 let seasonPick = SEASONS.includes(store.get('office-season')) ? store.get('office-season') : 'auto';
 function seasonNow() {
   const forced = HASH.match(/spring|summer|autumn|winter/);
@@ -170,7 +170,7 @@ function setSeason(v) {
 
 // ---------- погода: в режиме «Авто» меняется сама каждые 6–15 минут, с учётом сезона ----------
 const WEATHERS = ['auto', 'clear', 'rain', 'storm', 'snow', 'fog', 'wind'];
-const WEATHER_UA = { auto: 'Авто', clear: 'Ясно', rain: 'Дощ', storm: 'Гроза', snow: 'Сніг', fog: 'Туман', wind: 'Вітер' };
+const WEATHER_UA = { auto: 'Авто', clear: 'Ясно', rain: 'Дождь', storm: 'Гроза', snow: 'Снег', fog: 'Туман', wind: 'Ветер' };
 const WEATHER_MIX = {                                // как часто бывает каждая погода в сезоне
   winter: { snow: 5, clear: 2.5, fog: 1.5, wind: 1 },
   spring: { clear: 4, rain: 3, wind: 2, fog: 1 },
@@ -953,51 +953,51 @@ function activity(a, t) {
   if (a.place.act === 'tv' && a.idleSince !== null && t - a.idleSince > IDLE_TO_SLEEP) return 'sleep';
   return a.place.act || 'desk';
 }
-const ACT_UA = { work: 'працює', wait: 'чекає на тебе', desk: 'на місці', walk: 'йде', coffee: "п'є каву", tea: "п'є чай",
-  tv: 'дивиться графіки', music: 'слухає музику', game: 'грає в аркаду', phone: 'в телефоні', sleep: 'дрімає',
-  ride: 'їде', cab: 'чекає машину', serve: 'несе чай', brief: 'на брифінгу', bench: 'на лавочці', cafe: 'п\'є каву за столиком' };
-const RIDE_UA = { taxi: ['їде на таксі', 'чекає таксі'], tesla: ['їде на Теслі', 'сідає в Теслу'], limo: ['їде на лімузині', 'чекає лімузин'] };
+const ACT_UA = { work: 'работает', wait: 'ждет тебя', desk: 'на месте', walk: 'идет', coffee: "пьет кофе", tea: "пьет чай",
+  tv: 'смотрит графики', music: 'слушает музыку', game: 'играет в аркаду', phone: 'в телефоне', sleep: 'дремлет',
+  ride: 'едет', cab: 'ждет машину', serve: 'несет чай', brief: 'на брифинге', bench: 'на лавочке', cafe: 'пьет кофе за столиком' };
+const RIDE_UA = { taxi: ['едет на такси', 'ждет такси'], tesla: ['едет на Тесле', 'садится в Теслу'], limo: ['едет на лимузине', 'ждет лимузин'] };
 // що агент робить зараз: інструмент і коротка підпис від хуків (ім'я файлу, команда, сайт, 6 символів запиту)
 const TOOL_UA = {
-  Edit: ['править', 'Правлю'], MultiEdit: ['править', 'Правлю'], Write: ['створює', 'Створюю'], NotebookEdit: ['править', 'Правлю'],
-  Read: ['читає', 'Читаю'], Bash: ['термінал:', 'Запускаю'], Grep: ['шукає', 'Шукаю'], Glob: ['шукає файли', 'Шукаю файли'],
-  WebSearch: ['гуглить', 'Гуглю'], WebFetch: ['читає сайт', 'Читаю сайт'], Task: ['кличе помічника', 'Кличу помічника'], Agent: ['кличе помічника', 'Кличу помічника'],
-  'думает': ['думає над', 'Думаю над'],
+  Edit: ['правит', 'Правлю'], MultiEdit: ['правит', 'Правлю'], Write: ['создает', 'Создаю'], NotebookEdit: ['правит', 'Правлю'],
+  Read: ['читает', 'Читаю'], Bash: ['терминал:', 'Запускаю'], Grep: ['ищет', 'Ищу'], Glob: ['ищет файлы', 'Ищу файлы'],
+  WebSearch: ['гуглит', 'Гуглю'], WebFetch: ['читает сайт', 'Читаю сайт'], Task: ['зовет помощника', 'Зову помощника'], Agent: ['зовет помощника', 'Зову помощника'],
+  'думает': ['думает над', 'Думаю над'],
 };
 const inChat = a => (a.kind === 'chatgpt' || a.kind === 'claude-app' || OTHER_AI.includes(a.kind)) && !a.hooks;
 function doing(a, first) {
-  if (inChat(a)) return a.status === 'working' ? (first ? 'Пишу відповідь у чаті' : 'пише відповідь у чаті') : '';
-  if (a.kind === 'ollama') return a.status === 'working' ? (first ? `Генерую локально${a.detail ? ' · ' + a.detail : ''}` : 'генерує локально') : '';
+  if (inChat(a)) return a.status === 'working' ? (first ? 'Пишу ответ в чате' : 'пишет ответ в чате') : '';
+  if (a.kind === 'ollama') return a.status === 'working' ? (first ? `Генерирую локально${a.detail ? ' · ' + a.detail : ''}` : 'генерирует локально') : '';
   if (!a.tool) return '';
   const v = TOOL_UA[a.tool], d = a.detail, quote = /^(Grep|WebSearch|думает)$/.test(a.tool);
   const verb = v ? v[first ? 1 : 0] : a.tool;
-  if (!d) return a.tool === 'думает' ? (first ? 'Думаю…' : 'думає') : verb.replace(/:$/, '');
+  if (!d) return a.tool === 'думает' ? (first ? 'Думаю…' : 'думает') : verb.replace(/:$/, '');
   return `${verb} ${quote ? `«${d}»` : d}`;
 }
 const actUA = (a, act) => act === 'work' && doing(a) ? doing(a) : act === 'ride' ? RIDE_UA[rideOf(a)][0] : act === 'cab' ? RIDE_UA[rideOf(a)][1] : ACT_UA[act];
 
 // ---------- реплики на украинском ----------
 const LINES = {
-  hello: ['Привіт!', 'Доброго дня!', 'Я на місці'], helloNight: ['Доброї ночі!', 'Нічна зміна'],
-  bye: ['Бувай!', 'До зустрічі!', 'Па-па!'],
-  err: ['Ой, помилка!', 'Знову червоне…', 'Це не я, це інструмент', 'Спробую ще раз'],
-  byeRide: { taxi: ['Викликаю таксі'], tesla: ['Тесла вже чекає', 'Їду на Теслі'], limo: ['Подайте лімузин', 'Мій лімузин!'] },
-  bench: ['Свіже повітря', 'Гарно тут', 'Посиджу трохи'],
-  cafe: ['Смачна кава!', 'Пригощайся шоколадкою', 'Як твій код?', 'Ще по каві?', 'М-м-м, шоколад', 'Тут найкраща кава', 'Розкажи новини', 'Чорний чи молочний?', 'Шоколад дає сили'],
-  cafeHi: ['Привіт, сідай!', 'Кава й шоколад!', 'Пригощаю!'],
-  catTreat: ['Тримай смаколик!', 'Тримай смаколик', 'На, смаколик!'],
-  work: ['Пишу код…', 'Ще трохи', 'Майже готово', 'Хм, цікаво', 'Тести зелені!', 'Рефакторю'],
-  Bash: ['Запускаю команду', 'Термінал на зв’язку'], Edit: ['Правлю файл', 'Одна правка'], MultiEdit: ['Правлю файл'], Write: ['Створюю файл'],
-  Read: ['Читаю код'], Grep: ['Шукаю…'], Glob: ['Шукаю файли'], WebSearch: ['Гуглю…'], WebFetch: ['Читаю сайт'], Task: ['Кличу помічника'], Agent: ['Кличу помічника'],
-  wait: ['Глянь, будь ласка', 'Потрібна твоя відповідь', 'Чекаю на тебе'],
-  coffee: ['Кава!', 'Перерва на каву', 'Ще одну каву'], tea: ['Час на чай', 'Чай з лимоном', 'Гарячий чай'],
-  tv: ['Графік росте', 'Дивлюсь ринок'], game: ['Ще рівень!', 'Рекорд!', 'Майже пройшов'], music: ['Гарна пісня', 'Відпочиваю'],
-  phone: ['Гортаю новини'], sleep: ['Хррр…'], desk: ['Чекаю задачу', 'Що далі?'],
-  catDesk: ['Мурчику, привіт!', 'Котик!', 'Не лягай на клаву', 'Хто тут прийшов?'], catSofa: ['Гарний котик', 'Мурчить…'], catBeg: ['Це не тобі', 'Кава не для котів', 'Ну добре, трошки'],
-  flash: ['Ого, блискавка!', 'Гримить…', 'Ух!'],
+  hello: ['Привет!', 'Добрый день!', 'Я на месте'], helloNight: ['Доброй ночи!', 'Ночная смена'],
+  bye: ['Пока!', 'До встречи!', 'Пока-пока!'],
+  err: ['Ой, ошибка!', 'Опять красное…', 'Это не я, это инструмент', 'Попробую еще раз'],
+  byeRide: { taxi: ['Вызываю такси'], tesla: ['Тесла уже ждет', 'Еду на Тесле'], limo: ['Подайте лимузин', 'Мой лимузин!'] },
+  bench: ['Свежий воздух', 'Красиво тут', 'Посижу немного'],
+  cafe: ['Вкусный кофе!', 'Угощайся шоколадкой', 'Как твой код?', 'Еще по кофе?', 'М-м-м, шоколад', 'Тут лучший кофе', 'Расскажи новости', 'Черный или с молоком?', 'Шоколад дает силы'],
+  cafeHi: ['Привет, садись!', 'Кофе и шоколад!', 'Угощаю!'],
+  catTreat: ['Держи вкусняшку!', 'Держи вкусняшку', 'На, вкусняшка!'],
+  work: ['Пишу код…', 'Еще немного', 'Почти готово', 'Хм, интересно', 'Тесты зеленые!', 'Рефакторю'],
+  Bash: ['Запускаю команду', 'Терминал на связи'], Edit: ['Правлю файл', 'Одна правка'], MultiEdit: ['Правлю файл'], Write: ['Створюю файл'],
+  Read: ['Читаю код'], Grep: ['Ищу…'], Glob: ['Ищу файлы'], WebSearch: ['Гуглю…'], WebFetch: ['Читаю сайт'], Task: ['Зову помощника'], Agent: ['Зову помощника'],
+  wait: ['Глянь, пожалуйста', 'Нужен твой ответ', 'Жду тебя'],
+  coffee: ['Кофе!', 'Перерыв на кофе', 'Еще чашечку'], tea: ['Время чая', 'Чай с лимоном', 'Горячий чай'],
+  tv: ['График растет', 'Смотрю рынок'], game: ['Еще уровень!', 'Рекорд!', 'Почти прошел'], music: ['Хорошая песня', 'Отдыхаю'],
+  phone: ['Листаю новости'], sleep: ['Хррр…'], desk: ['Жду задачу', 'Что дальше?'],
+  catDesk: ['Мурчик, привет!', 'Котик!', 'Не ложись на клаву', 'Кто тут пришел?'], catSofa: ['Хороший котик', 'Мурлычет…'], catBeg: ['Это не тебе', 'Кофе не для котов', 'Ну ладно, чуть-чуть'],
+  flash: ['Ого, молния!', 'Гремит…', 'Ух!'],
   sky: {
-    clear: ['Гарна погода', 'Тихо сьогодні'], rain: ['Знову дощ', 'Пахне дощем', 'Парасолька є?'], storm: ['Гроза!', 'Ну й злива'],
-    snow: ['Сніжно сьогодні', 'Холодно!', 'Сніг іде'], fog: ['Туман…', 'Нічого не видно'], wind: ['Вітер сильний', 'Ох, задуває'],
+    clear: ['Хорошая погода', 'Тихо сегодня'], rain: ['Опять дождь', 'Пахнет дождем', 'Зонтик есть?'], storm: ['Гроза!', 'Ну и ливень'],
+    snow: ['Снежно сегодня', 'Холодно!', 'Снег идет'], fog: ['Туман…', 'Ничего не видно'], wind: ['Сильный ветер', 'Ох, задувает'],
   },
 };
 const MAX_BUBBLES = 2;
@@ -1031,9 +1031,9 @@ function say(a, s, t, force, tries = 0) {
   a.say = { text: s, until: t + 4.8, at: t }; a.nextSay = t + (FAST ? rand(5, 9) : rand(25, 60));
   if (!a.arriving) sfx.blip(a.kind);
   if (GROUP[a.kind] === 'claude' && s === 'Холодно!') teaOrder(a, t);
-  if (GROUP[a.kind] === 'claude' && s === 'Що далі?') {
+  if (GROUP[a.kind] === 'claude' && s === 'Что дальше?') {
     const cx = [...agents.values()].find(x => x.kind === 'codex' && avail(x));
-    if (cx && Math.random() < (HASH.includes('puss') ? 1 : 0.1)) later(t + 2.6, () => avail(cx) && say(cx, 'А далі, Клоде… Кіт у чоботях!', performance.now() / 1000, true));
+    if (cx && Math.random() < (HASH.includes('puss') ? 1 : 0.1)) later(t + 2.6, () => avail(cx) && say(cx, 'А дальше, Клод… Кот в сапогах!', performance.now() / 1000, true));
   }
 }
 // відкладені репліки: відповідь звучить після того, як попередня хмарка дочиталась
@@ -1060,13 +1060,13 @@ function teaTick(t) {
     if (t < tea.at) return;
     if (kettle.owner || g.brk) { tea = null; return; }
     if (talk && talk.who.some(x => x === c || x === g)) talk = null;
-    say(c, 'GPT, зроби чай для Клода', t, true);
+    say(c, 'GPT, сделай чай для Клода', t, true);
     kettle.owner = g; g.brk = { spot: kettle, until: 0, errand: true };
     c.teaWait = true;
     tea.state = 'reply'; tea.at = t + 2.6;
     return;
   }
-  if (tea.state === 'reply') { if (t < tea.at) return; say(g, tea.lemon ? 'Роблю лимончай!' : 'Зараз зроблю!', t, true); tea.state = 'brew'; tea.at = 0; return; }
+  if (tea.state === 'reply') { if (t < tea.at) return; say(g, tea.lemon ? 'Делаю лимончай!' : 'Сейчас сделаю!', t, true); tea.state = 'brew'; tea.at = 0; return; }
   if (tea.state === 'brew') {
     if (!(arrived(g) && g.place === kettle)) return;
     if (!tea.at) { tea.at = t + 3.5; sfx.pour(); return; }
@@ -1083,64 +1083,64 @@ function teaTick(t) {
     const there = arrived(g) && g.place === g.brk.spot, seated = arrived(c) && c.place === c.desk;
     if (t > tea.at) { stop(); return; }
     if (!there || !seated) return;
-    say(g, tea.lemon ? 'Тримай лимончай, Клоде!' : 'Тримай чай, Клоде!', t, true);
+    say(g, tea.lemon ? 'Держи лимончай, Клод!' : 'Держи чай, Клод!', t, true);
     g.carry = false; c.teaCup = t + 30; c.lemon = tea.lemon; c.teaWait = false;
     tea.state = 'thanks'; tea.at = t + 2.6;
     return;
   }
-  if (tea.state === 'thanks') { if (t < tea.at) return; say(c, tea.lemon ? 'Дякую! З лимоном, як я люблю' : 'Дякую! Одразу тепліше', t, true); endBreak(g, t); tea = null; }
+  if (tea.state === 'thanks') { if (t < tea.at) return; say(c, tea.lemon ? 'Спасибо! С лимоном, как я люблю' : 'Спасибо! Сразу теплее', t, true); endBreak(g, t); tea = null; }
 }
 // діалоги між агентами: GPT і Claude підколюють один одного, Codex теж, плюс нейтральні розмови
 const GROUP = { claude: 'claude', 'claude-app': 'claude', chatgpt: 'gpt', codex: 'codex', ollama: 'ollama' };
 for (const k of OTHER_AI) GROUP[k] = k;
 const DIALOGS = [
-  { a: 'gpt', b: 'claude', lines: ['Гей, Клоде, глянь, що я намалював!', 'Ого! А чому в людини шість пальців?', 'Це художній стиль!'] },
-  { a: 'claude', b: 'gpt', lines: ['Гей, GPT, дивись, як треба писати код', 'Ну-ну, а тести де?', 'Вже зелені!'] },
-  { a: 'claude', b: 'gpt', lines: ['GPT, ти знову вигадав бібліотеку?', 'Вона мала б існувати!'] },
-  { a: 'gpt', b: 'claude', lines: ['Клоде, я написав вірш про твій код', 'Дякую, а можна без рими?'] },
-  { a: 'gpt', b: 'claude', lines: ['Клоде, давай я поясню коротко', 'Коротко на три сторінки?', 'Ну… на дві'] },
-  { a: 'claude', b: 'gpt', lines: ['GPT, допоможи з назвою змінної', 'Як щодо superDataManager2?', 'Я сам, дякую'] },
-  { a: 'codex', b: 'claude', lines: ['Claude, глянеш мій пул-реквест?', 'Тільки приберу console.log', 'Їх там лише сорок!'] },
-  { a: 'claude', b: 'codex', lines: ['Codex, хто зламав білд?', 'Це не я, це кеш'] },
+  { a: 'gpt', b: 'claude', lines: ['Эй, Клод, глянь, что я нарисовал!', 'Ого! А почему у человека шесть пальцев?', 'Это художественный стиль!'] },
+  { a: 'claude', b: 'gpt', lines: ['Эй, GPT, смотри, как надо писать код', 'Ну-ну, а тесты где?', 'Уже зеленые!'] },
+  { a: 'claude', b: 'gpt', lines: ['GPT, ты опять выдумал библиотеку?', 'Она должна была существовать!'] },
+  { a: 'gpt', b: 'claude', lines: ['Клод, я написал стих про твой код', 'Спасибо, а можно без рифмы?'] },
+  { a: 'gpt', b: 'claude', lines: ['Клод, давай я объясню коротко', 'Коротко на три страницы?', 'Ну… на две'] },
+  { a: 'claude', b: 'gpt', lines: ['GPT, помоги с названием переменной', 'Как насчет superDataManager2?', 'Я сам, спасибо'] },
+  { a: 'codex', b: 'claude', lines: ['Claude, глянешь мой пулл-реквест?', 'Только уберу console.log', 'Их там всего сорок!'] },
+  { a: 'claude', b: 'codex', lines: ['Codex, кто сломал билд?', 'Это не я, это кэш'] },
   // Codex — начальник GPT: одна команда, він роздає задачі
-  { a: 'codex', b: 'gpt', lines: ['GPT, звіт до обіду!', 'Так, шефе!'] },
-  { a: 'codex', b: 'gpt', lines: ['GPT, менше слів, більше коду', 'Зрозумів, шефе. Коротко: так'] },
-  { a: 'gpt', b: 'codex', lines: ['Шефе, можна я ще картинку намалюю?', 'Спочатку тести!', 'Ех…'] },
-  { a: 'codex', b: 'gpt', lines: ['GPT, хто писав цей промпт?', 'Ви, шефе…', 'Тоді все геніально'] },
-  { a: 'gpt', b: 'codex', lines: ['Шефе, Клод знову хизується кодом', 'Нехай. Ми команда OpenAI!'] },
-  { a: 'codex', b: 'claude', lines: ['Claude, мій GPT працює краще', 'Звісно, з таким шефом'] },
+  { a: 'codex', b: 'gpt', lines: ['GPT, отчет до обеда!', 'Да, шеф!'] },
+  { a: 'codex', b: 'gpt', lines: ['GPT, меньше слов, больше кода', 'Понял, шеф. Коротко: да'] },
+  { a: 'gpt', b: 'codex', lines: ['Шеф, можно я еще картинку нарисую?', 'Сначала тесты!', 'Эх…'] },
+  { a: 'codex', b: 'gpt', lines: ['GPT, кто писал этот промпт?', 'Вы, шеф…', 'Тогда все гениально'] },
+  { a: 'gpt', b: 'codex', lines: ['Шеф, Клод опять хвастается кодом', 'Пусть. Мы команда OpenAI!'] },
+  { a: 'codex', b: 'claude', lines: ['Claude, мой GPT работает лучше', 'Конечно, с таким шефом'] },
   // Ollama — локальна лама: працює без інтернету і безкоштовно, грієтися від відеокарти
-  { a: 'ollama', b: 'gpt', lines: ['GPT, а в тебе є інтернет?', 'Звісно, я ж у хмарі', 'А я і без нього працюю'] },
-  { a: 'claude', b: 'ollama', lines: ['Ламо, скільки в тебе параметрів?', 'Сім мільярдів і одна відеокарта', 'Скромно, але своє'] },
-  { a: 'ollama', b: 'codex', lines: ['Codex, почім у тебе токени?', 'А в тебе?', 'Я безкоштовна, тільки світло платіть'] },
-  { a: 'gpt', b: 'ollama', lines: ['Ламо, чому ти така пухнаста?', 'Відеокарта гріє'] },
-  { a: 'codex', b: 'ollama', lines: ['Ламо, підеш до нас у команду?', 'Я локальна, мої дані — вдома'] },
-  { lines: ['Кави хочеш?', 'Давай після коміту'] },
-  { lines: ['Як твій день?', 'Тисяча рядків і жодного бага', 'Вірю-вірю…'] },
-  { lines: ['Чув новини з ринку?', 'Біткоїн знову росте!'] },
-  { lines: ['Хто з\'їв мій пончик?', 'Мурчик, звісно'] },
-  { lines: ['Коли обід?', 'У ботів обіду немає', 'Тоді кава'] },
-  { lines: ['Гарно сьогодні працюємо', 'Команда мрії!'] },
+  { a: 'ollama', b: 'gpt', lines: ['GPT, а у тебя есть интернет?', 'Конечно, я же в облаке', 'А я и без него работаю'] },
+  { a: 'claude', b: 'ollama', lines: ['Лама, сколько у тебя параметров?', 'Семь миллиардов и одна видеокарта', 'Скромно, зато свое'] },
+  { a: 'ollama', b: 'codex', lines: ['Codex, почем у тебя токены?', 'А у тебя?', 'Я бесплатная, только свет оплатите'] },
+  { a: 'gpt', b: 'ollama', lines: ['Лама, почему ты такая пушистая?', 'Видеокарта греет'] },
+  { a: 'codex', b: 'ollama', lines: ['Лама, пойдешь к нам в команду?', 'Я локальная, мои данные — дома'] },
+  { lines: ['Кофе хочешь?', 'Давай после коммита'] },
+  { lines: ['Как твой день?', 'Тысяча строк и ни одного бага', 'Верю-верю…'] },
+  { lines: ['Слышал новости с рынка?', 'Биткоин опять растет!'] },
+  { lines: ['Кто съел мой пончик?', 'Мурчик, конечно'] },
+  { lines: ['Когда обед?', 'У ботов обеда нет', 'Тогда кофе'] },
+  { lines: ['Хорошо сегодня работаем', 'Команда мечты!'] },
 ];
 // діалоги з реальної роботи: хто що править, хто чекає на тебе, хто пушить
-const VOC = { claude: 'Клоде', gpt: 'GPT', codex: 'Codex', ollama: 'Ламо', gemini: 'Gemini', grok: 'Grok', deepseek: 'DeepSeek', qwen: 'Qwen', mistral: 'Mistral', perplexity: 'Perplexity', copilot: 'Copilot' }, voc = a => VOC[GROUP[a.kind]];
+const VOC = { claude: 'Клод', gpt: 'GPT', codex: 'Codex', ollama: 'Лама', gemini: 'Gemini', grok: 'Grok', deepseek: 'DeepSeek', qwen: 'Qwen', mistral: 'Mistral', perplexity: 'Perplexity', copilot: 'Copilot' }, voc = a => VOC[GROUP[a.kind]];
 const busy = a => a.status === 'working';
 const WORK_DIALOGS = [
-  { a: 'gpt', b: 'claude', when: (x, y) => busy(y) && y.files?.size >= 2, lines: (x, y) => [`Клоде, ти вже ${y.files.size}-й файл правиш?`, `Ще трошки, ${y.detail || 'майже все'}`] },
-  { a: 'gpt', b: 'claude', when: (x, y) => busy(y) && y.detail, lines: (x, y) => ['Клоде, що робиш?', doing(y, true), 'Покажеш потім?'] },
-  { a: 'codex', b: 'gpt', when: (x, y) => busy(y), lines: (x, y) => ['GPT, звітуй!', `${doing(y, true) || 'Працюю'}, шефе`] },
-  { a: 'codex', b: 'gpt', when: (x, y) => !busy(y), lines: ['GPT, чому без діла?', 'Чекаю нове питання, шефе'] },
-  { a: 'gpt', b: 'codex', when: (x, y) => busy(y) && y.detail, lines: (x, y) => ['Шефе, що робите?', doing(y, true), 'Ого, серйозно'] },
-  { a: 'claude', b: 'gpt', when: (x, y) => busy(y) && inChat(y), lines: ['GPT, кому пишеш?', 'Відповідаю в чаті, не відволікай'] },
-  { when: (x, y) => y.status === 'waiting', lines: (x, y) => [`${voc(y)}, тебе чекають?`, 'Так, потрібна відповідь людини', 'Гей, глянь сюди!'] },
-  { when: (x, y) => /^git push/.test(y.detail), lines: (x, y) => ['Хто там пушить?!', `Я, ${y.detail}. Все протестовано`] },
-  { when: (x, y) => y.tool === 'думает' && y.detail, lines: (x, y) => [`${voc(y)}, про що думаєш?`, `Про «${y.detail}»`] },
-  { when: (x, y) => busy(x) && busy(y), lines: ['Ти теж у роботі?', 'По вуха в коді'] },
+  { a: 'gpt', b: 'claude', when: (x, y) => busy(y) && y.files?.size >= 2, lines: (x, y) => [`Клод, ты уже ${y.files.size}-й файл правишь?`, `Еще чуть-чуть, ${y.detail || 'почти все'}`] },
+  { a: 'gpt', b: 'claude', when: (x, y) => busy(y) && y.detail, lines: (x, y) => ['Клод, что делаешь?', doing(y, true), 'Покажешь потом?'] },
+  { a: 'codex', b: 'gpt', when: (x, y) => busy(y), lines: (x, y) => ['GPT, отчитывайся!', `${doing(y, true) || 'Работаю'}, шеф`] },
+  { a: 'codex', b: 'gpt', when: (x, y) => !busy(y), lines: ['GPT, почему без дела?', 'Жду новый вопрос, шеф'] },
+  { a: 'gpt', b: 'codex', when: (x, y) => busy(y) && y.detail, lines: (x, y) => ['Шеф, что делаете?', doing(y, true), 'Ого, серьезно'] },
+  { a: 'claude', b: 'gpt', when: (x, y) => busy(y) && inChat(y), lines: ['GPT, кому пишешь?', 'Отвечаю в чате, не отвлекай'] },
+  { when: (x, y) => y.status === 'waiting', lines: (x, y) => [`${voc(y)}, тебя ждут?`, 'Да, нужен ответ человека', 'Эй, глянь сюда!'] },
+  { when: (x, y) => /^git push/.test(y.detail), lines: (x, y) => ['Кто там пушит?!', `Я, ${y.detail}. Все протестировано`] },
+  { when: (x, y) => y.tool === 'думает' && y.detail, lines: (x, y) => [`${voc(y)}, о чем думаешь?`, `О «${y.detail}»`] },
+  { when: (x, y) => busy(x) && busy(y), lines: ['Ты тоже в работе?', 'По уши в коде'] },
 ];
-const JOKES = ['Дах їхав додому, не хотів спати на вулиці зимою', 'Купіть Лемура!'];
+const JOKES = ['Крыша ехала домой, не хотела спать на улице зимой', 'Купите Лемура!'];
 function jokeRound(here, t) {
   const crew = [...here].sort(() => Math.random() - 0.5).slice(0, 4), jk = [...JOKES].sort(() => Math.random() - 0.5);
-  crew.forEach((a, i) => later(t + 0.3 + i * 4.2, () => avail(a) && say(a, i < jk.length ? jk[i] : pick(['Ха-ха!', 'Ну ти й жартівник', 'Смішно…']), performance.now() / 1000, true)));
+  crew.forEach((a, i) => later(t + 0.3 + i * 4.2, () => avail(a) && say(a, i < jk.length ? jk[i] : pick(['Ха-ха!', 'Ну ты и шутник', 'Смешно…']), performance.now() / 1000, true)));
   nextTalk = t + crew.length * 4.2 + 30;
 }
 let talk = null, nextTalk = FAST ? 14 : 20;
@@ -1200,7 +1200,7 @@ function briefTick(t) {
     if (talk && talk.who.some(a => crew.includes(a))) talk = null;
     brief = { at: t, lead, team: [], called: crew.map((a, i) => ({ a, spot: BRIEF_SPOTS[i] })), state: 'gather', i: 0, next: 0, lines: [] };
     const ls = brief.called[0]; ls.spot.owner = lead; lead.brk = { spot: ls.spot, until: 0, brief: true }; brief.team.push(lead);
-    say(lead, pick(['Збираємось на брифінг!', 'Брифінг, усі сюди!', 'Команда, на брифінг!']), t, true);
+    say(lead, pick(['Собираемся на брифинг!', 'Брифинг, все сюда!', 'Команда, на брифинг!']), t, true);
     return;
   }
   // покликані йдуть на брифінг, коли доробили свою справу: допили, договорили, віддали чай
@@ -1218,7 +1218,7 @@ function briefTick(t) {
     a.carry = false; a.teaWait = false;
     c.spot.owner = a; a.brk = { spot: c.spot, until: 0, brief: true };
     brief.team.push(a);
-    if (a !== brief.lead && wasBusy) say(a, pick(['Іду!', 'Вже йду', 'Біжу на брифінг']), t, true);
+    if (a !== brief.lead && wasBusy) say(a, pick(['Иду!', 'Уже иду', 'Бегу на брифинг']), t, true);
   }
   brief.team = brief.team.filter(a => agents.has(a.id) && a.brk?.brief);
   const waiting = brief.called.some(c => !c.done && !c.a.brk?.brief);
@@ -1227,18 +1227,18 @@ function briefTick(t) {
     if ((waiting || !brief.team.every(a => arrived(a) && a.place === a.brk.spot)) && t - brief.at < 70) return;
     if (brief.team.length < 2) { endBrief(t); return; }
     for (const c of brief.called) c.done = true;                // хто не встиг, той пропускає
-    const L = brief.lead, lines = [[L, pick(['Отже, коротко по задачах', 'Стендап! По черзі, коротко', 'Що в кого? Коротко'])]];
+    const L = brief.lead, lines = [[L, pick(['Итак, коротко по задачам', 'Стендап! По очереди, коротко', 'Что у кого? Коротко'])]];
     let forgot = false;
     for (const a of brief.team.filter(a => a !== L).slice(0, 3)) {
-      lines.push([L, `${voc(a)}${a.tagNo > 1 ? ' ' + a.tagNo : ''}, що в тебе?`]);
+      lines.push([L, `${voc(a)}${a.tagNo > 1 ? ' ' + a.tagNo : ''}, что у тебя?`]);
       const idle25 = a.status !== 'working' && a.idleSince !== null && t - a.idleSince > 1500;   // без роботи понад 25 хвилин
-      let ans = a.status === 'working' ? doing(a, true) || pick(['Працюю над задачею', 'В процесі, все йде']) : pick(['Чекаю нову задачу', 'Вільний, беру будь-що', 'Все здав, чекаю']);
-      if (a.kind === 'ollama' && idle25) ans = 'Всі дрібні дії виконала';
-      else if (idle25 && !forgot) { ans = 'Мене забули…'; forgot = true; }
-      else if (a.kind === 'chatgpt' && Math.random() < 0.25) ans = 'Прикинувся клавокунем';
+      let ans = a.status === 'working' ? doing(a, true) || pick(['Работаю над задачей', 'В процессе, все идет']) : pick(['Жду новую задачу', 'Свободен, беру что угодно', 'Все сдал, жду']);
+      if (a.kind === 'ollama' && idle25) ans = 'Все мелкие дела сделала';
+      else if (idle25 && !forgot) { ans = 'Меня забыли…'; forgot = true; }
+      else if (a.kind === 'chatgpt' && Math.random() < 0.25) ans = 'Притворился клавокунем';
       lines.push([a, ans]);
     }
-    lines.push([L, pick(['Все, по місцях!', 'Дякую, працюємо!', 'Супер, розходимось'])]);
+    lines.push([L, pick(['Все, по местам!', 'Спасибо, работаем!', 'Супер, расходимся'])]);
     Object.assign(brief, { state: 'talk', lines, next: t + 0.6 });
     return;
   }
@@ -1256,16 +1256,16 @@ function endBrief(t) {
 
 // за столиком у кав'ярні — справжні діалоги: питання і відповідь на нього, по черзі
 const CAFE_TALKS = [
-  ['Розкажи новини', 'Біткоїн знову оновив максимум', 'А ми все код пишемо'],
-  ['Як твій код?', 'Зібрався з першого разу!', 'Не вірю…'],
-  ['Ще по каві?', 'Давай, і шоколадку', 'Пригощаю!'],
-  ['Чорний чи молочний?', 'Чорний, як мій термінал', 'Класика'],
-  ['Пригощайся шоколадкою', 'Дякую! Шоколад дає сили'],
-  ['Тут найкраща кава', 'Бо кавоварка теж з ШІ', 'Ха-ха'],
-  ['Що сьогодні робиш?', 'Рефакторю старий модуль', 'Тримайся!'],
-  ['Чув про новий фреймворк?', 'Їх щотижня новий', 'Оце правда'],
-  ['Як справи в команді?', 'Тести зелені, всі щасливі'],
-  ['Ти взагалі відпочиваєш?', 'Оце зараз і відпочиваю', 'Правильно'],
+  ['Расскажи новости', 'Биткоин опять обновил максимум', 'А мы все код пишем'],
+  ['Как твой код?', 'Собрался с первого раза!', 'Не верю…'],
+  ['Еще по кофе?', 'Давай, и шоколадку', 'Угощаю!'],
+  ['Черный или с молоком?', 'Черный, как мой терминал', 'Класика'],
+  ['Угощайся шоколадкой', 'Спасибо! Шоколад дает силы'],
+  ['Тут лучший кофе', 'Ведь кофемашина тоже с ИИ', 'Ха-ха'],
+  ['Что сегодня делаешь?', 'Рефакторю старый модуль', 'Держись!'],
+  ['Слышал про новый фреймворк?', 'Их каждую неделю новый', 'Вот это правда'],
+  ['Как дела в команде?', 'Тесты зеленые, все счастливы'],
+  ['Ты вообще отдыхаешь?', 'Вот сейчас и отдыхаю', 'Правильно'],
 ];
 function cafeChat(a, t) {
   const p = a.brk.cafe;
@@ -1292,7 +1292,7 @@ function chatTick(a, t) {
   if (act === 'brief' || act === 'serve') return;      // на брифінгу говорять по черзі, з чаєм у руках не до балачок
   if (act === 'work' && (a.detail || inChat(a) || a.kind === 'ollama') && Math.random() < 0.6) { say(a, doing(a, true), t, false); return; }
   let pool = act === 'work' ? (LINES[a.tool] && Math.random() < 0.6 ? LINES[a.tool] : LINES.work) : LINES[act] || LINES.desk;
-  if (act === 'work' && a.kind === 'ollama') pool = ['Відеокарта гріється', 'Токен за токеном…', 'Без інтернету, без проблем', 'Думаю локально'];
+  if (act === 'work' && a.kind === 'ollama') pool = ['Видеокарта греется', 'Токен за токеном…', 'Без интернета, без проблем', 'Думаю локально'];
   if ((act === 'desk' || act === 'tv' || act === 'coffee' || act === 'tea' || act === 'bench') && Math.random() < 0.25) pool = season === 'winter' ? [...LINES.sky[weather], 'Холодно!'] : LINES.sky[weather];
   say(a, pick(pool), t, false);
 }
@@ -1790,7 +1790,7 @@ function catStep(dt, t) {
     if (b2) cat.dir = b2.x > cat.x ? 'right' : 'left';
     if (cat.mode === 'greet') {
       catSay(cat.bye ? 'Мяу…' : 'Мяу!', t);
-      setTimeout(() => { if (agents.has(b2.id)) say(b2, pick(cat.bye ? ['Бувай, Мурчику!', 'Не сумуй, котику'] : ['Привіт, Мурчику!', 'Мурчик зустрічає!', 'Мій котику!']), performance.now() / 1000, true); }, 900);
+      setTimeout(() => { if (agents.has(b2.id)) say(b2, pick(cat.bye ? ['Пока, Мурчик!', 'Не грусти, котик'] : ['Привет, Мурчик!', 'Мурчик встречает!', 'Мой котик!']), performance.now() / 1000, true); }, 900);
     }
     if (cat.mode === 'visit') { say(b2, pick(LINES.catDesk), t, true); setTimeout(() => catSay(pick(['Мяу!', 'Мяу', 'Мрр?']), performance.now() / 1000), 1200); }
     if (cat.mode === 'sofa') { catSay('Мрр…', t); sfx.purr(); if (Math.random() < 0.6) setTimeout(() => say(b2, pick(LINES.catSofa), performance.now() / 1000, false), 1500); }
@@ -2135,21 +2135,21 @@ function panel(t) {
   const list = [...agents.values()].filter(a => !a.leaving);
   const k = localTime(), clock = `${String(k.h).padStart(2, '0')}:${String(k.m).padStart(2, '0')}`;
   const nSub = list.filter(a => a.sub).length;
-  const head = 'AI-ОФІС', sub = online ? `в офісі: ${list.length - nSub}${nSub ? ` · субагентів: ${nSub}` : ''}` : demoOn ? 'демо · сервер не запущено' : 'сервер не запущено';
-  const hint = online ? '' : 'Свої ШІ: див. опис Workshop';   // без сервера: підказка, як підключити своїх
-  const sun = sunTimes(), sunTxt = `схід ${localHM(sun.rise)} · захід ${localHM(sun.set)} · ${APP_VERSION}`;
+  const head = 'AI-ОФИС', sub = online ? `в офисе: ${list.length - nSub}${nSub ? ` · субагентов: ${nSub}` : ''}` : demoOn ? 'демо · сервер не запущен' : 'сервер не запущен';
+  const hint = online ? '' : 'Свои ИИ: см. описание Workshop';   // без сервера: підказка, як підключити своїх
+  const sun = sunTimes(), sunTxt = `восход ${localHM(sun.rise)} · закат ${localHM(sun.set)} · ${APP_VERSION}`;
   const opts = [
     { key: 'region', txt: `Регион: ${region().name}`, ic: ICON5.clock },
     { key: 'season', txt: `Сезон: ${SEASON_UA[season]}${seasonPick === 'auto' ? ' · авто' : ''}`, ic: ICON5[season] },
     { key: 'weather', txt: `Погода: ${WEATHER_UA[weather]}${weatherPick === 'auto' ? ' · авто' : ''}`, ic: ICON5[weather] },
-    { key: 'sound', txt: soundOn ? `Звук: увімк · ${Math.round(volume * 100)}%` : 'Звук: вимк', ic: soundOn ? ICON5.soundOn : ICON5.soundOff },
+    { key: 'sound', txt: soundOn ? `Звук: вкл · ${Math.round(volume * 100)}%` : 'Звук: выкл', ic: soundOn ? ICON5.soundOn : ICON5.soundOff },
     { key: 'demo', txt: 'Демо', ic: demoOn ? ICON5.demoOn : ICON5.demoOff },
   ];
   ctx.textBaseline = 'middle';
   const rows = list.map(a => {
     const act = activity(a, t);
     const ctxTxt = !a.sub && a.ctx > 0.05 ? ` · контекст ${Math.round(a.ctx * 100)}%` : '';
-    return { a, act, name: a.name, st: actUA(a, act) + (act === 'wait' && a.detail ? ' · ' + a.detail : '') + (a.err ? ' · помилка' : '') + ctxTxt };
+    return { a, act, name: a.name, st: actUA(a, act) + (act === 'wait' && a.detail ? ' · ' + a.detail : '') + (a.err ? ' · ошибка' : '') + ctxTxt };
   });
   const btnH = lh + 2 * u, gap = 2 * u;
   ctx.font = `${small}px ${FONT_UI}`;
@@ -2193,7 +2193,7 @@ function panel(t) {
     ctx.textAlign = 'left';
     let ry = y + pad + headH + u * 3;
     ctx.font = `${small}px ${FONT_UI}`; ctx.fillStyle = online ? '#9a92c4' : '#ffcf5c';
-    if (!rows.length) { ctx.fillText(online ? 'Поки нікого немає' : sub, x + pad, ry + rowH / 2); ry += rowH; }
+    if (!rows.length) { ctx.fillText(online ? 'Пока никого нет' : sub, x + pad, ry + rowH / 2); ry += rowH; }
     for (const r of rows) {
       const kd = KIND[r.a.kind];
       // голова агента в пикселях
@@ -2259,8 +2259,8 @@ function onReveal() {
   reveals.push(t);
   if (talk) { for (const a of talk.who) if (a.say?.talk) a.say = null; talk = null; }
   const a = pick(here), b = pick(here.filter(x => x !== a)) || a;
-  say(a, pick(['Опа, він дивиться!', 'Тихо, він дивиться!', 'Ой, нас бачать!']), t + 0.6, true);
-  later(t + 4.4, () => avail(b) && say(b, pick(['Робимо вигляд, що працюємо!', 'Всі за роботу!', 'Я тут працюю, чесно']), performance.now() / 1000, true));
+  say(a, pick(['Опа, он смотрит!', 'Тихо, он смотрит!', 'Ой, нас видят!']), t + 0.6, true);
+  later(t + 4.4, () => avail(b) && say(b, pick(['Делаем вид, что работаем!', 'Все за работу!', 'Я тут работаю, честно']), performance.now() / 1000, true));
 }
 let hiddenAt = 0;
 document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt = performance.now(); else if (hiddenAt) { pausedAt = hiddenAt; hiddenAt = 0; onReveal(); } });

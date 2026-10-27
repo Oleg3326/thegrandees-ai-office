@@ -2,7 +2,7 @@
   "file": "index.html",
   "preview": "preview.jpg",
   "title": "AI Office (fork: субагенты и метрики)",
-  "description": "Піксельний офіс, де агенти — твої відкриті AI-програми",
+  "description": "Пиксельный офис, где агенты — твои открытые AI-программы",
   "type": "web",
   "general": {
     "properties": {
@@ -13,7 +13,7 @@
         "value": "auto",
         "options": [
           {
-            "label": "Авто (за місяцем)",
+            "label": "Авто (по месяцу)",
             "value": "auto"
           },
           {
@@ -21,11 +21,11 @@
             "value": "spring"
           },
           {
-            "label": "Літо",
+            "label": "Лето",
             "value": "summer"
           },
           {
-            "label": "Осінь",
+            "label": "Осень",
             "value": "autumn"
           },
           {
@@ -41,7 +41,7 @@
         "value": "auto",
         "options": [
           {
-            "label": "Авто (змінюється сама)",
+            "label": "Авто (меняется само)",
             "value": "auto"
           },
           {
@@ -49,7 +49,7 @@
             "value": "clear"
           },
           {
-            "label": "Дощ",
+            "label": "Дождь",
             "value": "rain"
           },
           {
@@ -57,7 +57,7 @@
             "value": "storm"
           },
           {
-            "label": "Сніг",
+            "label": "Снег",
             "value": "snow"
           },
           {
@@ -65,7 +65,7 @@
             "value": "fog"
           },
           {
-            "label": "Вітер",
+            "label": "Ветер",
             "value": "wind"
           }
         ]
@@ -78,7 +78,7 @@
       },
       "volume": {
         "order": 3,
-        "text": "Гучність",
+        "text": "Громкость",
         "type": "slider",
         "min": 0,
         "max": 100,
