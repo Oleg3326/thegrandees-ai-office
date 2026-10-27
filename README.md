@@ -33,7 +33,6 @@ A pixel-art live wallpaper that turns the AI tools running on your computer into
 - **Speech bubbles** in Ukrainian ("Привіт!", "Правлю файл", "Кава!"), never more than two at once.
 - **Murchyk the cat** sleeps on his mat, wanders around, sits next to a bot working at its desk, curls up purring beside bots on the sofa and begs at the coffee machine, where a bot sometimes tosses him a treat. Bots answer him, and little hearts float up.
 - **Own cars:** Claude arrives and leaves in a white Tesla, ChatGPT in a black GRANDE limousine about one time in four (a taxi otherwise), Codex by taxi. Bots get out one by one, a leaving bot waits at the curb, and other cars queue behind a stopped one.
-- **"Busification"** (a Ukrainian meme): a resting bot sometimes walks out to the bench on the right. Rarely, an olive ТЦК (draft office) van swerves onto the sidewalk on the way, leaving tire marks. Two soldiers surround the bot ("Пред'явіть документи!"), check its papers ("Бусифікуємо!") and take it away; the van backs up, straightens and speeds off. Claude's papers are in order ("Ви вільні") and it goes on to the bench. GPT and Codex get tossed into the van, and the bot comes back in its own car 45 seconds later (Codex after 30). The "Бусифікувати" panel button plays the scene right away: GPT (or another bot if GPT is not in) walks out, and the van comes only once it is on the sidewalk.
 - **The cat greets** every bot that arrives at the door and sees off those who leave.
 - **Coffee table:** now and then two bots sit at the round kitchen table with coffee and chocolate and chat while the chocolate bar shrinks.
 - **What they are doing:** the panel and speech bubbles show the real current action, for example "править JournalPage.tsx", "термінал: git push" or "думає над «Привіт…»". ChatGPT and the Claude app have no hooks, so they show "пише відповідь у чаті" while busy.
@@ -82,7 +81,7 @@ curl -fsSL https://raw.githubusercontent.com/AlexanderGrandees/thegrandees-ai-of
 No admin password needed. It installs `~/Applications/TGTI AI Office.app`, uses your Node.js or downloads a private copy, adds the hooks and opens the app at login.
 - The office becomes your **desktop wallpaper** (behind the desktop icons). Your normal wallpaper comes back when you quit.
 - On a MacBook with a **notch**, touch the notch with the mouse and the office drops down as a panel. Move the mouse away and it slides back.
-- The **menu bar icon** (a building) turns the wallpaper and the notch panel on or off, picks the season and weather, toggles sound, plays the busification scene, turns start-at-login on or off, and quits.
+- The **menu bar icon** (a building) turns the wallpaper and the notch panel on or off, picks the season and weather, toggles sound, turns start-at-login on or off, and quits.
 - The office server runs only while the app is open and stops when you quit it. Drawing pauses when the wallpaper is covered or the panel is hidden, to save the battery.
 
 Test without any AI running: with the office open, run `node test-agent.mjs TEST` in the install folder. A test bot walks in, works, asks for permission, rests and leaves.
@@ -92,7 +91,7 @@ Test without any AI running: with the office open, run `node test-agent.mjs TEST
 - **Season and weather:** the buttons in the panel, or the *Season* and *Weather* properties in Wallpaper Engine's wallpaper settings.
 - **Sound:** the *Sound* button in the panel, or the *Sound* and *Volume* properties in Wallpaper Engine (35% by default). In a normal browser the sound starts after the first click.
 - **Hide the panel:** open `index.html#nohud` (the two buttons stay).
-- **Preview with fake agents:** `index.html#demo`. Add `-winter`, `-night`, `-storm`, `-fog` and so on to force a look, for example `index.html#demo-summer-night-storm`. `-leave` makes one fake agent leave after 15 seconds to show the taxi, `-bus` plays the van scene right away, `-limo` puts GPT in the limousine.
+- **Preview with fake agents:** `index.html#demo`. Add `-winter`, `-night`, `-storm`, `-fog` and so on to force a look, for example `index.html#demo-summer-night-storm`. `-leave` makes one fake agent leave after 15 seconds to show the taxi, `-limo` puts GPT in the limousine.
 
 ## Privacy
 

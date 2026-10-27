@@ -267,7 +267,6 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, NSMenuDe
         m.setSubmenu(sub(seasons, #selector(pickSeason(_:))), for: m.addItem(withTitle: "Сезон", action: nil, keyEquivalent: ""))
         m.setSubmenu(sub(weathers, #selector(pickWeather(_:))), for: m.addItem(withTitle: "Погода", action: nil, keyEquivalent: ""))
         soundMenu = m.addItem(withTitle: "Звук", action: #selector(toggleSound), keyEquivalent: "")
-        m.addItem(withTitle: "Бусифікувати", action: #selector(busify), keyEquivalent: "")
         m.addItem(.separator())
         loginMenu = m.addItem(withTitle: "Запускати при вході", action: #selector(toggleLogin), keyEquivalent: "")
         m.addItem(withTitle: "Вийти", action: #selector(quit), keyEquivalent: "q")
@@ -295,10 +294,6 @@ final class App: NSObject, NSApplicationDelegate, WKNavigationDelegate, NSMenuDe
     @objc func toggleNotch() { notchOn.toggle(); applyModes() }
     @objc func pickSeason(_ s: NSMenuItem) { everyWeb("setSeason('\(s.representedObject as! String)')") }
     @objc func pickWeather(_ s: NSMenuItem) { everyWeb("setWeather('\(s.representedObject as! String)')") }
-    @objc func busify() {
-        if let n = notchWeb, notchShown { n.evaluateJavaScript("busifyNow()", completionHandler: nil) }
-        else { wallWeb?.evaluateJavaScript("busifyNow()", completionHandler: nil) }
-    }
     @objc func toggleSound() {
         let on = !(defaults.object(forKey: "sound") as? Bool ?? true)
         defaults.set(on, forKey: "sound")

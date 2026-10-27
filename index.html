@@ -775,7 +775,7 @@ function newAgent(s) {
   const a = { id: s.id, kind: KIND[s.kind] ? s.kind : 'claude', name: s.name, status: s.status, tool: s.tool || '', tagNo: 1,
     sub, subType: s.subType || '',
     place: curbPlace(), x: 192, y: sub ? 181 : 179, path: [], pending: null, desk: null, spot: null, leaving: false, arriving: !sub, brk: null,
-    nextBreak: t + (FAST ? 8 : rand(90, 240)), nextOut: t + (HASH.includes('bus') ? 4 : outGap()), nextSay: t + rand(4, 10), say: null, greeted: false,
+    nextBreak: t + (FAST ? 8 : rand(90, 240)), nextOut: t + outGap(), nextSay: t + rand(4, 10), say: null, greeted: false,
     dir: sub ? 'up' : 'down', ph: Math.random() * 6, idleSince: s.status === 'idle' ? t : null };
   if (sub) a.nextBreak = a.nextOut = t + 1e9;           // субагент не ходит за кофе и на лавочку: работа короткая
   agents.set(s.id, a);
@@ -807,7 +807,7 @@ function endBreak(a, t) {
 }
 // уходящий агент идёт к бордюру, там его ждёт своя машина
 function leave(a) {
-  if (a.arriving || a.away) { agents.delete(a.id); return; }
+  if (a.arriving) { agents.delete(a.id); return; }
   a.leaving = true; a.leavePlace = curbPlace();
   if (a.desk) { a.desk.owner = null; a.desk = null; }
   if (a.brk) { if (a.spot !== a.brk.spot) a.brk.spot.owner = null; a.brk = null; }
@@ -815,21 +815,15 @@ function leave(a) {
   if (a.sub) return;                                    // субагент просто выходит за дверь и пропадает (см. step)
   say(a, pick([...LINES.bye, ...LINES.byeRide[rideOf(a)]]), performance.now() / 1000, true);
   catGreet(a, true);
-  maybeBus(a, performance.now() / 1000);
 }
-// кожен вихід на вулицю будь-якої моделі може закінчитись бусом (після паузи між бусами)
-function maybeBus(a, t) {
-  if (bus || missile || a.sub || brief?.team.includes(a)) return;
-  if (HASH.includes('bus') || (t > busNext && Math.random() < (FAST ? 1 : 0.5))) bus = { a, state: 'armed', at: t, exit: a.leaving };
-}
-// сам агент нікуди не зривається, поки не побув на місці хоча б MIN_STAY секунд; зовнішні події (нова задача, бус, вихід) діють одразу
+// сам агент нікуди не зривається, поки не побув на місці хоча б MIN_STAY секунд; зовнішні події (нова задача, вихід) діють одразу
 const MIN_STAY = FAST ? 5 : 30;
 const settled = (a, t) => arrived(a) && a.stayPlace === a.place && t - a.stayAt >= MIN_STAY;
-const free = a => !a.leaving && !a.arriving && !a.away && !a.held && !a.brk && arrived(a);
+const free = a => !a.leaving && !a.arriving && !a.brk && arrived(a);
 const resting = (a, t) => free(a) && a.status === 'idle' && a.idleSince !== null && t - a.idleSince > IDLE_TO_CHILL && a.spot && a.place === a.spot;
 // кав'ярня: двое садятся за круглый столик, пьют кофе и едят шоколад
 function cafeWith(a, t) {
-  if (Math.random() > (FAST ? 0.8 : 0.4) || (HASH.includes('bus') && !HASH.includes('cafe'))) return false;
+  if (Math.random() > (FAST ? 0.8 : 0.4)) return false;
   const ok = (seat, x) => !seat.owner || seat.owner === x;
   const mates = [...agents.values()].filter(p => p !== a && settled(p, t) && (resting(p, t) || (free(p) && p.place === p.desk && p.status !== 'waiting')));
   for (const p of mates.sort(() => Math.random() - 0.5)) {
@@ -844,43 +838,16 @@ function cafeWith(a, t) {
   return false;
 }
 let cafeSince = 0;
-// отдыхающий выходит посидеть на лавочке справа; иногда по пути его встречает бус
-// кнопка «Бусифікувати»: бус приїжджає зараз; першим під роздачу GPT, якщо він в офісі
-function busTarget() {
-  const ok = a => !a.sub && !a.arriving && !a.leaving && !a.away && !a.held;
-  const list = [...agents.values()].filter(ok);
-  return list.find(a => a.kind === 'chatgpt') || list.find(a => a.status !== 'working') || list[0] || null;
-}
-// кнопку натиснули: бус чекає, поки агент доп'є, договорить або дограє сцену (не довше 30 с), і тільки тоді їде
-let busWant = 0;
-function busifyNow() { if (!bus && !busWant && busTarget()) busWant = performance.now() / 1000; }
-function busWantTick(t) {
-  if (!busWant || bus) return;
-  const a = busTarget();
-  if (!a) { busWant = 0; return; }
-  const scene = (a.brk && a.brk.spot !== BENCH && (a.brk.brief || a.brk.errand || a.brk.cafe || !arrived(a) || (a.brk.until && t < a.brk.until)))
-    || (tea && (tea.c === a || tea.g === a)) || (talk && talk.who.includes(a)) || (a.say && a.say.until > t) || !arrived(a);
-  if (scene && t - busWant < 30) return;
-  busWant = 0;
-  busifyStart(a, t);
-}
-function busifyStart(a, t) {
-  if (a.brk) endBreak(a, t);
-  if (BENCH.owner && BENCH.owner !== a) endBreak(BENCH.owner, t);
-  BENCH.owner = a; a.brk = { spot: BENCH, until: 0, forced: true };
-  bus = { a, state: 'armed', at: t, forced: true };
-  say(a, pick(['Піду подихаю', 'Вийду на хвилинку', 'Трохи свіжого повітря']), t, true);
-}
+// отдыхающий выходит посидеть на лавочке справа
 function goOut(a, t) {
   a.nextOut = t + outGap();
   if (cafeWith(a, t)) return;
   if (BENCH.owner) return;
   BENCH.owner = a; a.brk = { spot: BENCH, until: 0 };
-  maybeBus(a, t);
 }
 // иногда агент встаёт из-за стола и идёт за кофе или чаем
 function breakTick(a, t) {
-  if (a.leaving || a.arriving || a.away || a.held) return;
+  if (a.leaving || a.arriving) return;
   if (a.brk?.brief || a.brk?.errand) { if (a.status === 'waiting' && a.brk.brief) endBreak(a, t); return; }
   if (a.brk) {
     const there = arrived(a) && a.place === a.brk.spot, sp = a.brk.spot;
@@ -928,13 +895,8 @@ function sync(list) {
 function step(dt, t) {
   for (const a of [...agents.values()]) {
     a.ph += dt;
-    if (a.away) {                                      // забрали на службу: через время возвращается на своей машине
-      if (t > a.away.back) { a.away = null; a.arriving = true; a.ride = pickRide(a.kind); a.back = true; a.place = curbPlace(); a.x = 192; a.y = 179; a.path = []; a.pending = null; a.exitAt = 0; }
-      continue;
-    }
     if (a.arriving) continue;                          // ещё едет в машине
     if (a.sub && atCurb(a)) { agents.delete(a.id); continue; }   // субагент дошёл до двери: уходит без машины
-    if (a.held) { chatTick(a, t); continue; }          // стоит, его проверяют
     breakTick(a, t);
     if (!a.path.length) {
       const want = a.pending || wanted(a, t);
@@ -951,7 +913,6 @@ function step(dt, t) {
     chatTick(a, t);
   }
   briefTick(t);
-  busWantTick(t);
   teaTick(t);
   queueTick(t);
   dialogTick(t);
@@ -960,8 +921,6 @@ const arrived = a => !a.path.length && !a.pending;
 const sitting = a => arrived(a) && !!a.place.sit;
 const atCurb = a => a.leaving && arrived(a) && a.place.street;
 function activity(a, t) {
-  if (a.away) return 'army';
-  if (a.held) return 'check';
   if (a.arriving) return 'ride';
   if (atCurb(a)) return 'cab';
   if (a.leaving || !arrived(a)) return 'walk';
@@ -973,7 +932,7 @@ function activity(a, t) {
 }
 const ACT_UA = { work: 'працює', wait: 'чекає на тебе', desk: 'на місці', walk: 'йде', coffee: "п'є каву", tea: "п'є чай",
   tv: 'дивиться графіки', music: 'слухає музику', game: 'грає в аркаду', phone: 'в телефоні', sleep: 'дрімає',
-  ride: 'їде', cab: 'чекає машину', serve: 'несе чай', brief: 'на брифінгу', bench: 'на лавочці', cafe: 'п\'є каву за столиком', army: 'на службі', check: 'перевіряють документи' };
+  ride: 'їде', cab: 'чекає машину', serve: 'несе чай', brief: 'на брифінгу', bench: 'на лавочці', cafe: 'п\'є каву за столиком' };
 const RIDE_UA = { taxi: ['їде на таксі', 'чекає таксі'], tesla: ['їде на Теслі', 'сідає в Теслу'], limo: ['їде на лімузині', 'чекає лімузин'] };
 // що агент робить зараз: інструмент і коротка підпис від хуків (ім'я файлу, команда, сайт, 6 символів запиту)
 const TOOL_UA = {
@@ -1000,7 +959,6 @@ const LINES = {
   bye: ['Бувай!', 'До зустрічі!', 'Па-па!'],
   err: ['Ой, помилка!', 'Знову червоне…', 'Це не я, це інструмент', 'Спробую ще раз'],
   byeRide: { taxi: ['Викликаю таксі'], tesla: ['Тесла вже чекає', 'Їду на Теслі'], limo: ['Подайте лімузин', 'Мій лімузин!'] },
-  back: ['Відслужив!', 'Я повернувся!', 'Ледве відпустили', 'Де моя кава?'],
   bench: ['Свіже повітря', 'Гарно тут', 'Посиджу трохи'],
   cafe: ['Смачна кава!', 'Пригощайся шоколадкою', 'Як твій код?', 'Ще по каві?', 'М-м-м, шоколад', 'Тут найкраща кава', 'Розкажи новини', 'Чорний чи молочний?', 'Шоколад дає сили'],
   cafeHi: ['Привіт, сідай!', 'Кава й шоколад!', 'Пригощаю!'],
@@ -1026,8 +984,8 @@ const measC = document.createElement('canvas').getContext('2d');
 function bubbleW(s) { measC.font = `${fontPx(ws * 0.4)}px ${FONT_UI}`; let w = measC.measureText(s).width; if (w > measC.measureText('x'.repeat(26)).width) w *= 0.56; return w / ws + 4; }
 function clash(a, s, t, skip = []) {
   const wa = bubbleW(s), ya = a.labelY ?? a.y - 20;
-  for (const x of [...agents.values(), ...troops]) {
-    if (x === a || skip.includes(x) || !x.say || x.say.until < t || x.arriving || x.away || x.hidden) continue;
+  for (const x of agents.values()) {
+    if (x === a || skip.includes(x) || !x.say || x.say.until < t || x.arriving || x.hidden) continue;
     if (Math.abs(ya - (x.labelY ?? x.y - 20)) < 12 && Math.abs(a.x - x.x) < (wa + bubbleW(x.say.text)) / 2 + 1) return x;
   }
   return null;
@@ -1037,7 +995,7 @@ function say(a, s, t, force, tries = 0) {
   if (!talk?.who.includes(a)) {
     const c = clash(a, s, t);
     if (c && !force) { a.nextSay = t + rand(3, 6); return; }                                         // сусід ще говорить: репліка почекає
-    if (c && (cafeLine || bus || missile || (brief && brief.state === 'talk'))) c.say = null;          // сцена важливіша: чужа хмарка зникає
+    if (c && (cafeLine || (brief && brief.state === 'talk'))) c.say = null;          // сцена важливіша: чужа хмарка зникає
     else if (c && tries < 4) {                                                                      // важлива репліка: дочекається, поки сусід договорить
       later(c.say.until + 0.3, () => { if (agents.has(a.id) && !a.leaving) say(a, s, performance.now() / 1000, true, tries + 1); });
       return;
@@ -1055,18 +1013,11 @@ function say(a, s, t, force, tries = 0) {
     if (cx && Math.random() < (HASH.includes('puss') ? 1 : 0.1)) later(t + 2.6, () => avail(cx) && say(cx, 'А далі, Клоде… Кіт у чоботях!', performance.now() / 1000, true));
   }
 }
-// повернувся зі служби: у кожного своя історія
-const BACK = { gpt: ['Отримав медаль за бездіяльність', 'І там вигнали'], codex: ['Провів спецоперацію з випорожнення лімітів', 'Отримав медаль!'], ollama: ['Зекономила мільйон!'] };
-function backLine(a, t) {
-  const own = BACK[GROUP[a.kind]], s = own && Math.random() < 0.7 ? pick(own) : pick(LINES.back);
-  say(a, s, t, true);
-  if (s === 'Зекономила мільйон!') later(t + 4.4, () => avail(a) && say(a, '…і зекономлений мільйон кудись зник', performance.now() / 1000, true));
-}
 // відкладені репліки: відповідь звучить після того, як попередня хмарка дочиталась
 const queue = [];
 const later = (at, fn) => queue.push({ at, fn });
 function queueTick(t) { for (let i = queue.length - 1; i >= 0; i--) if (t >= queue[i].at) { const q = queue.splice(i, 1)[0]; q.fn(); } }
-const avail = a => agents.has(a.id) && !a.leaving && !a.arriving && !a.away && !a.held;
+const avail = a => agents.has(a.id) && !a.leaving && !a.arriving;
 
 // «Холодно!» від Клода: GPT іде робити йому чай (у 20% лимончай), Клод сідає за стіл і чекає
 let tea = null;
@@ -1171,7 +1122,7 @@ function jokeRound(here, t) {
 }
 let talk = null, nextTalk = FAST ? 14 : 20;
 function dialogTick(t) {
-  const ok = a => a && agents.has(a.id) && !a.arriving && !a.leaving && !a.away && !a.held && !a.brk?.cafe && !a.brk?.brief && !a.brk?.errand && arrived(a);
+  const ok = a => a && agents.has(a.id) && !a.arriving && !a.leaving && !a.brk?.cafe && !a.brk?.brief && !a.brk?.errand && arrived(a);
   if (talk) {
     // хтось пішов або пересів в іншу частину офісу: розмова обривається, їхні репліки зникають
     if (!talk.who.every(ok) || zoneOf(talk.who[0]) !== zoneOf(talk.who[1])) {
@@ -1187,7 +1138,7 @@ function dialogTick(t) {
     else talk.next = t + 3.8;
     return;
   }
-  if (t < nextTalk || missile) return;
+  if (t < nextTalk) return;
   nextTalk = t + 10;
   const here = [...agents.values()].filter(ok);
   const pairs = [];
@@ -1216,7 +1167,6 @@ const BRIEF_LEAD = ['claude', 'codex', 'gpt'];
 function briefTick(t) {
   if (!brief) {
     if (t < briefNext) return;
-    if (bus || missile) { briefNext = t + 30; return; }
     const team = [...agents.values()].filter(a => avail(a) && a.status !== 'waiting' && !a.brk?.forced);
     if (team.length < 2) { briefNext = t + 60; return; }
     // ведучий — той, хто зараз вільний (Claude, потім Codex, потім GPT)
@@ -1313,8 +1263,8 @@ function cafeChat(a, t) {
 }
 function chatTick(a, t) {
   if (a.say && a.say.until < t) a.say = null;
-  if (a.brk?.cafe && arrived(a) && !a.leaving && !a.held) { cafeChat(a, t); return; }
-  if (a.held || a.say || t < a.nextSay || a.leaving || !arrived(a) || missile) return;
+  if (a.brk?.cafe && arrived(a) && !a.leaving) { cafeChat(a, t); return; }
+  if (a.say || t < a.nextSay || a.leaving || !arrived(a)) return;
   const act = activity(a, t);
   if (act === 'brief' || act === 'serve') return;      // на брифінгу говорять по черзі, з чаєм у руках не до балачок
   if (act === 'work' && (a.detail || inChat(a) || a.kind === 'ollama') && Math.random() < 0.6) { say(a, doing(a, true), t, false); return; }
@@ -1360,12 +1310,12 @@ function llamaHead(X, T, dir, eyeOpen, talk, t) {
   }
 }
 function drawBot(a, t) {
-  if (a.arriving || a.away) return;
+  if (a.arriving) return;
   const k = KIND[a.kind], X = Math.round(a.x * S), Y = Math.round(a.y * S), sit = sitting(a), dir = a.dir;
   const T = Y - 22 + (sit ? 4 : 0);
   const head = k.head, hl = shade(head, 1.18), hd = shade(head, 0.78), ol = shade(head, 0.36);
   const body = k.body, bl = shade(body, 1.3), bd = shade(body, 0.72), obd = shade(body, 0.4);
-  const walking = a.path.length > 0 && !a.held, act = activity(a, t), working = act === 'work', waiting = act === 'wait' || act === 'check';
+  const walking = a.path.length > 0, act = activity(a, t), working = act === 'work', waiting = act === 'wait';
   if (!sit) Q(X - 7, Y - 1, 15, 2, 'rgba(0,0,0,0.28)');
   const blink = act === 'sleep' || (a.ph % 3.7) < 0.12, eye = waiting ? '#ffcf5c' : a.err ? ((t * 4 | 0) % 2 ? '#ff4d4d' : '#ffb3b3') : k.eye;
   const talk = a.say && a.say.until > t && (t * 6 | 0) % 2;
@@ -1409,16 +1359,6 @@ function drawBot(a, t) {
       if (tea && a.lemon && (a.carry || a.teaCup > t)) { Q(cx + (left ? 2 : 0), cy - 1, 2, 2, '#e6f04a'); q(cx + (left ? 3 : 0), cy - 1, '#9cc23a'); }
       const st = (t * 3 | 0) % 2; q(cx + 1 + st, cy - 2, 'rgba(255,255,255,0.7)'); q(cx + 2 - st, cy - 4, 'rgba(255,255,255,0.45)');
     }
-  }
-  if (a.gen && !a.doc) {                                // генерує документ: аркуш збирається з мерехтливих пікселів
-    const right = dir !== 'left', dx = right ? X + 9 : X - 15, p = Math.min(1, (t - a.gen) / 3);
-    Q(dx, T + 13, 6, 8, '#1b2a5c');
-    for (let i = 0; i < 24; i++) if (i / 24 < p) Q(dx + 1 + (i % 4), T + 14 + (i / 4 | 0), 1, 1, ((t * 10 | 0) + i) % 5 ? '#2d4a9a' : '#ffcf5c');
-    for (let i = 0; i < 3; i++) { const k = (t * 2 + i / 3) % 1; q(dx + 3 + Math.round(Math.sin((t + i) * 5) * 5), T + 12 - Math.round(k * 8), `rgba(185,168,255,${(1 - k).toFixed(2)})`); }
-  }
-  if (a.doc) {                                          // показывает документы
-    const right = dir !== 'left', dx = right ? X + 9 : X - 15;
-    Q(dx, T + 13, 6, 8, '#1b2a5c'); Q(dx + 1, T + 14, 4, 6, '#2d4a9a'); Q(dx + 2, T + 15, 2, 2, '#ffcf5c'); Q(dx + 1, T + 18, 4, 1, '#c9c3e6');
   }
   if (act === 'phone' || act === 'cab') { Q(X + 8, T + 13, 4, 6, '#1D1A33'); Q(X + 9, T + 14, 2, 3, (t * 2 | 0) % 2 ? '#5cc8ff' : '#7fe0b4'); }
   if (!sit) {
@@ -1469,7 +1409,7 @@ function paperPile(px, py, p, t) {
   if (p > 0.9) { const k = (t * 1.2) % 1; Q(px + 3 + Math.round(Math.sin(t * 3) * 3), py - n * 2 - 3 - Math.round(k * 4), 6, 4, '#f7f5ff'); Q(px + 4 + Math.round(Math.sin(t * 3) * 3), py - n * 2 - 2 - Math.round(k * 4), 4, 1, '#9a92c4'); }
 }
 function drawLabel(a, t) {
-  if (a.arriving || a.away) return;
+  if (a.arriving) return;
   const k = KIND[a.kind], x = a.x, top = (Math.round(a.y * S) - 22 + (sitting(a) ? 4 : 0)) / S;
   const name = a.sub ? (a.subType || 'SUB').toUpperCase().slice(0, 9) : k.short + (a.tagNo > 1 ? a.tagNo : '');
   const sofa = arrived(a) && a.place.sit && !a.place.desk && a.place.lane === 82;
@@ -1480,7 +1420,7 @@ function drawLabel(a, t) {
   if (!a.sub && a.ctx > 0.02) ctxBar(x, ly, a.ctx, t);   // шкала контекста под табличкой
   if (!arrived(a)) return;
   const bx = x + 6, by = top + 1, act = activity(a, t);
-  if (act === 'wait' || (act === 'check' && bus && bus.state !== 'come' && !bus.free)) {
+  if (act === 'wait') {
     if ((t * 2 | 0) % 2) { const X = Math.round(bx * S), Y = Math.round(by * S); Q(X, Y - 2, 12, 18, '#1D1A33'); Q(X + 1, Y - 1, 10, 16, '#ffcf5c'); Q(X + 5, Y + 1, 2, 8, '#1D1A33'); Q(X + 5, Y + 11, 2, 2, '#1D1A33'); }
   } else if (act === 'work') {
     const ic = TOOL_ICON[a.tool];
@@ -1649,7 +1589,7 @@ function drawXmasTree(t) {
   [[0, -32], [-3, -28], [3, -25], [-5, -21], [5, -19], [0, -23], [-8, -14], [8, -14], [2, -16], [-2, -11], [6, -10], [-10, -9]].forEach(([dx, dy], i) => Q(cx + dx, by + dy, 2, 2, cols[(i + (t * 2 | 0)) % 4]));
 }
 
-// ---------- машины: поток, свои машины агентов и бус ТЦК ----------
+// ---------- машины: поток и свои машины агентов ----------
 const cars = [];
 let nextCar = 1;
 const CAR_COLORS = ['#e0745f', '#5cc8ff', '#f7f5ff', '#7b61ff', '#2fd3a0', '#4a4560', '#ff9ab8'];
@@ -1661,12 +1601,12 @@ const RIDE = { taxi: { col: '#ffc83a', len: 44 }, tesla: { col: '#eef0f5', len: 
 const pickRide = kind => kind === 'chatgpt' ? (Math.random() < 0.25 || HASH.includes('limo') ? 'limo' : 'taxi') : RIDE_OF[kind] || 'taxi';
 const rideOf = a => a.ride || (a.ride = pickRide(a.kind));
 const rides = {};
-const laneFree = (x0, x1) => !cars.some(c => !c.bus && Math.abs(c.y - 192) < 5 && c.x > x0 && c.x < x1);
-const rideNeeded = type => [...agents.values()].some(a => !a.sub && rideOf(a) === type && (a.arriving || (atCurb(a) && !a.held && bus?.a !== a)));
+const laneFree = (x0, x1) => !cars.some(c => Math.abs(c.y - 192) < 5 && c.x > x0 && c.x < x1);
+const rideNeeded = type => [...agents.values()].some(a => !a.sub && rideOf(a) === type && (a.arriving || atCurb(a)));
 function rideStep(type, dt, t) {
   let r = rides[type];
   if (!r) {
-    if (rideNeeded(type) && !bus?.van && laneFree(-90, -5)) { r = rides[type] = { ride: type, x: -40, dir: 1, y: 192, v: 70, col: RIDE[type].col, len: RIDE[type].len, state: 'come', at: 0 }; cars.push(r); }
+    if (rideNeeded(type) && laneFree(-90, -5)) { r = rides[type] = { ride: type, x: -40, dir: 1, y: 192, v: 70, col: RIDE[type].col, len: RIDE[type].len, state: 'come', at: 0 }; cars.push(r); }
     return;
   }
   if (r.state === 'come') {
@@ -1682,10 +1622,9 @@ function rideStep(type, dt, t) {
         if (!a.exitAt) a.exitAt = t + 0.7 * n++;
         if (t >= a.exitAt) {
           a.arriving = false; a.exitAt = 0; a.x = 192; a.y = 181; a.nextSay = Math.max(a.nextSay, t + 3); r.busy = t;
-          if (a.back) { a.back = false; backLine(a, t); }
           catGreet(a);
         }
-      } else if (atCurb(a) && !a.held && bus?.a !== a) { agents.delete(a.id); r.busy = t; }
+      } else if (atCurb(a)) { agents.delete(a.id); r.busy = t; }
     }
     const door = s2 > 0.35 && t - (r.busy || r.at + 0.8) < 1.4;
     if (door !== !!r.door) sfx.door();
@@ -1700,16 +1639,12 @@ function rideStep(type, dt, t) {
 function carStep(dt, t) {
   if (t > nextCar) {
     const dir = Math.random() < 0.5 ? 1 : -1, x = dir > 0 ? -30 : W + 30, y = dir > 0 ? 192 : 208;
-    const hold = dir > 0 && bus && bus.state !== 'armed';   // пока бус на тротуаре, в ближний ряд новые машины не въезжают
-    if (!hold && !cars.some(c => c.y === y && Math.abs(c.x - x) < 50)) cars.push({ x, dir, y, col: pick(CAR_COLORS), v: 45 + Math.random() * 30, len: 44 });
+    if (!cars.some(c => c.y === y && Math.abs(c.x - x) < 50)) cars.push({ x, dir, y, col: pick(CAR_COLORS), v: 45 + Math.random() * 30, len: 44 });
     nextCar = t + 4 + Math.random() * 9;
   }
   for (const type in RIDE) rideStep(type, dt, t);
-  busStep(dt, t);
-  missileStep(t);
   // машины в одном ряду не наезжают друг на друга и ждут за стоящей машиной
   for (const c of cars) {
-    if (c.bus) continue;                               // бус едет сам
     let v = c.v;
     for (const o of cars) if (o !== c && Math.abs(o.y - c.y) < 5) {
       const gap = (o.x - c.x) * c.dir, need = (c.len + o.len) / 4 + 6;
@@ -1719,11 +1654,10 @@ function carStep(dt, t) {
   }
   for (let i = cars.length - 1; i >= 0; i--) {
     const c = cars[i];
-    if (c.x < -50 || c.x > W + 50) { if (c.ride) delete rides[c.ride]; if (c.bus) bus = null; cars.splice(i, 1); }
+    if (c.x < -50 || c.x > W + 50) { if (c.ride) delete rides[c.ride]; cars.splice(i, 1); }
   }
 }
 function drawCar(c, t) {
-  if (c.bus) return drawVan(c, t);
   const L = c.len, X = Math.round(c.x * S) - L / 2, Y = c.y * S - 10, f = c.dir > 0, col = c.col, night = phase !== 'day', kind = c.ride;
   Q(X + 2, Y + 20, L - 2, 2, 'rgba(0,0,0,0.3)');
   if (isWet()) Q(X + 2, Y + 22, L - 4, 4, 'rgba(255,255,255,0.06)');
@@ -1779,314 +1713,6 @@ function drawCar(c, t) {
   }
 }
 
-// ---------- крилата ракета: ШІ перехоплюють, перепрограмовують і повертають відправнику ----------
-// Хтось кричить «Крилата ракета!», Codex перехоплює, ракета прилітає зліва і зависає над офісом, поки Claude перепрограмовує маршрут,
-// на «Повернути відправнику» розвертається на 180°, на «Завантажив!» відлітає назад, ліворуч.
-let missile = null, missileNext = HASH.includes('missile') ? 6 : FAST ? 50 : rand(60, 135), missileSeen = false;   // перша ракета — у перші 2,5 хв
-const missC = document.createElement('canvas'); missC.width = 44; missC.height = 20;
-const mctx = missC.getContext('2d'); mctx.setTransform(S, 0, 0, S, 0, 0);
-const MS = { o: '#2a2833', b: '#a3a3ae', l: '#cdcdd5', d: '#74747f', n: '#868692', w: '#8c8c98', nz: '#55555f', eye: '#24222c' };
-function missileSay(a, text, t) { if (missile) for (const x of [missile.icp, missile.prg]) if (x) x.say = null; if (a && avail(a)) { if (a.say) a.say = null; say(a, text, t, true); a.nextSay = t + 12; } }
-function missileStep(t) {
-  if (!missile) {
-    if (t < missileNext) return;
-    if (bus || brief) { missileNext = t + (missileSeen ? 60 : 4); return; }
-    const here = [...agents.values()].filter(a => avail(a) && arrived(a) && !a.brk?.cafe);
-    if (here.length < (missileSeen ? 2 : 1)) { missileNext = t + (HASH.includes('missile') || !missileSeen ? 5 : 120); return; }
-    if (talk) { for (const a of talk.who) if (a.say?.talk) a.say = null; talk = null; }
-    const icp = here.find(a => a.kind === 'codex') || pick(here);
-    const prg = here.find(a => GROUP[a.kind] === 'claude' && a !== icp) || pick(here.filter(a => a !== icp));
-    missileSeen = true;
-    missile = { at: t, icp, prg, x: -30, y: 18, sx: 1, step: 0, flame: 1 };
-    missileSay(pick(here), 'Крилата ракета!', t); sfx.siren(); sfx.whoosh(0.3);
-    return;
-  }
-  const m = missile, s2 = t - m.at, out = p => 1 - Math.pow(1 - p, 3);
-  const line = (n, at, a, text, snd) => { if (m.step < n && s2 > at) { m.step = n; missileSay(a, text, t); snd?.(); } };
-  line(1, 2.2, m.icp, 'Починаю перехоплення!');
-  line(2, 6.0, m.prg, 'Перепрограмовую маршрут…', () => { sfx.hum(); sfx.chirp(); });
-  line(3, 10.0, m.prg, 'Повернути відправнику!', () => sfx.turn());
-  line(4, 13.0, m.icp, m.icp?.kind === 'ollama' ? 'Завантажила!' : 'Завантажив!', () => sfx.whoosh(0));
-  if (s2 < 6) { const p = out(s2 / 6); m.x = -30 + (120 + 30) * p; m.y = 18 + 28 * p; m.flame = 1 - p * 0.7; m.hover = false; }
-  else if (s2 < 13) {                                            // зависла над офісом
-    m.x = 120; m.y = 46 + Math.round(Math.sin(t * 3) * 1.2 * S) / S; m.hover = true; m.flame = 0.3;
-    m.sx = s2 < 10 ? 1 : Math.cos(Math.min(1, (s2 - 10) / 1.1) * Math.PI);     // розворот на 180°
-  } else {                                                       // летить назад, ліворуч, звідки прилетіла
-    const p = Math.min(1, (s2 - 13) / 2.6);
-    m.sx = -1; m.hover = false; m.flame = 1; m.x = 120 - (120 + 60) * p * p; m.y = 46 - 40 * p * p;
-    if (p >= 1) { missile = null; missileNext = t + (FAST ? 90 : rand(2400, 5400)); }
-  }
-}
-function drawMissile(t) {
-  const m = missile;
-  if (!m) return;
-  cur = mctx; mctx.clearRect(0, 0, 44, 20);
-  const M = MS, fl = (t * 14 | 0) % 2;
-  // полум'я двигуна позаду (ракета дивиться носом праворуч, на розвороті дзеркалиться)
-  const len = Math.round((6 + fl * 2) * m.flame);
-  if (len > 1) { Q(8 - len, 9, len, 4, 'rgba(176,120,230,0.85)'); Q(8 - Math.round(len * 0.6), 10, Math.round(len * 0.6), 2, '#ffbd7a'); }
-  Q(7, 8, 3, 6, M.o); Q(8, 9, 2, 4, M.nz);
-  Q(9, 1, 5, 7, M.o); Q(10, 2, 3, 6, M.w); Q(13, 4, 2, 4, M.o); Q(13, 5, 1, 3, M.w);       // хвостовий стабілізатор
-  Q(10, 7, 27, 8, M.o); Q(11, 8, 25, 6, M.b); Q(11, 8, 25, 1, M.l); Q(11, 13, 25, 1, M.d);  // корпус
-  Q(17, 8, 1, 6, '#7f8ea6'); Q(18, 8, 1, 6, '#b3aa7c');                                   // стримана синьо-жовта смужка
-  Q(36, 8, 3, 6, M.o); Q(36, 9, 3, 4, M.n); Q(39, 9, 2, 4, M.o); Q(39, 10, 2, 2, M.n); Q(41, 10, 1, 2, M.o);   // ніс
-  Q(19, 13, 9, 3, M.o); Q(20, 14, 7, 1, M.w); Q(18, 15, 6, 2, M.o); Q(19, 15, 4, 1, M.w);   // крило
-  Q(10, 14, 4, 3, M.o); Q(11, 14, 2, 2, M.w);
-  // мордочка: очі кліпають, усмішка
-  if ((t % 3.2) > 0.12) { Q(30, 9, 1, 2, M.eye); Q(33, 9, 1, 2, M.eye); }
-  q(31, 12, M.eye); q(32, 12, M.eye); q(29, 11, '#c9a3aa'); q(34, 11, '#c9a3aa');
-  cur = g;
-  if (m.hover) {                                                 // тінь на підлозі і реактивний струмінь донизу
-    discQ(m.x * S, (m.y + 26) * S, 22, 'rgba(20,16,40,0.18)', 0.3);
-    const h = 10 + fl * 4, jx = (m.x - m.sx * 1) * S; Q(jx - 4, (m.y + 7) * S, 8, h, 'rgba(176,120,230,0.7)'); Q(jx - 2, (m.y + 7) * S, 4, h - 4, '#ffd6a8');
-  }
-  g.save(); g.translate(Math.round(m.x * S) / S, Math.round(m.y * S) / S); g.scale(m.sx, 1); g.imageSmoothingEnabled = false;
-  g.drawImage(missC, -22, -10, 44, 20); g.restore();
-  // індикатор уваги, поки ракета летить до офісу
-  if (missile.step < 1 && (t * 3 | 0) % 2) {
-    const X = (m.x + (m.sx < 0 ? -26 : 26)) * S, Y = (m.y - 16) * S;
-    for (let i = 0; i < 8; i++) Q(X - i, Y + i, i * 2 + 1, 1, '#e0504a');
-    Q(X, Y + 2, 1, 3, '#fff1e0'); q(X, Y + 6, '#fff1e0');
-  }
-}
-
-// ---------- бус ТЦК: «бусифікація» по дороге на лавочку ----------
-// Бус залетает на тротуар с заносом, двое военных окружают агента, проверяют документы и забирают его.
-// Через несколько минут агент возвращается на своей машине, если его программа всё ещё открыта.
-let bus = null, busNext = FAST || HASH.includes('bus') ? 0 : 120;
-const troops = [], skids = [];
-const SKID_LIFE = FAST ? 45 : 120;
-const vanC = document.createElement('canvas'); vanC.width = 80; vanC.height = 44;
-const vctx = vanC.getContext('2d'); vctx.setTransform(S, 0, 0, S, 0, 0);
-const local = (v, lx, ly) => ({ x: v.x + lx * Math.cos(v.ang) - ly * Math.sin(v.ang), y: v.y + lx * Math.sin(v.ang) + ly * Math.cos(v.ang) });
-// следы шин: от каждого колеса отрезок за кадр
-function skid(v, t, k = 1) {
-  const w = [[-8.5, -6], [-8.5, 6], [8.5, -6], [8.5, 6]].map(([lx, ly]) => local(v, lx, ly));
-  if (v.lastW) w.forEach((p, i) => skids.push({ x0: v.lastW[i].x, y0: v.lastW[i].y, x1: p.x, y1: p.y, born: t, k: i < 2 ? k : k * 0.6 }));
-  v.lastW = w;
-}
-function trooper(x, y, path, role) { const o = { x, y, path, dir: 'left', ph: Math.random() * 6, say: null, hidden: false, doc: false, role }; troops.push(o); return o; }
-// репліки сцени з бусом по черзі: нова прибирає попередню, щоб хмарки не лягали одна на одну
-function quiet() { if (bus?.a) bus.a.say = null; for (const o of troops) o.say = null; }
-function troopSay(o, text, t) { quiet(); o.say = { text, until: t + 4 }; sfx.blip('tck'); }
-function aSay(a, text, t) { quiet(); say(a, text, t, true); }
-const PROTESTS = ['Я ж бот!', 'А як же мій код?', 'Я ж бот!', 'Але ж я просто ШІ…'];
-let protestI = Math.random() * 4 | 0;
-let reserveSeen = false;                             // Клод уперше бачить бус: точно генерує резерв, далі в 30% випадків
-function moveAlong(o, dt, v) {
-  if (!o.path.length) return true;
-  const p = o.path[0], dx = p.x - o.x, dy = p.y - o.y, d = Math.hypot(dx, dy), s2 = v * dt;
-  if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) o.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
-  if (d <= s2) { o.x = p.x; o.y = p.y; o.path.shift(); } else { o.x += dx / d * s2; o.y += dy / d * s2; }
-  o.ph += dt;
-  return !o.path.length;
-}
-function draft(a, t) {
-  a.held = false; a.doc = false; a.gen = 0; a.say = null; a.path = []; a.pending = null;
-  if (a.leaving) { agents.delete(a.id); return; }
-  if (a.brk) { if (a.spot !== a.brk.spot) a.brk.spot.owner = null; a.brk = null; }
-  if (a.spot) { a.spot.owner = null; a.spot = null; }
-  if (a.desk) { a.desk.owner = null; a.desk = null; }
-  a.away = { back: t + (a.kind === 'codex' ? 30 : 45) }; // Codex повертається через 30 с, GPT через 45 с, якщо програма ще відкрита
-}
-function busStep(dt, t) {
-  if (!bus) return;
-  const a = bus.a, here = a && agents.has(a.id), van = bus.van;
-  const ease = p => 1 - (1 - p) * (1 - p);
-  if (bus.state === 'armed') {
-    if (!here || (bus.exit ? !a.leaving : a.leaving || !a.brk || a.brk.spot !== BENCH || (a.x > 290 && !bus.forced))) { bus = null; return; }
-    if (bus.forced && a.x > 280 && a.y >= 173 && !a.held) { a.held = true; a.path = []; a.pending = null; a.dir = 'left'; }   // по кнопці чекає на тротуарі, поки ряд звільниться
-    // агент вышел из двери и идёт к лавочке, ближний ряд свободен: бус выезжает
-    if (t - bus.at > (bus.forced ? 60 : 25)) { if (here) a.held = false; bus = null; return; }   // ряд так і не звільнився
-    // по кнопці, а агент уже сидить на лавочці: встає і виходить на тротуар, бус їде одразу
-    if (bus.forced && !a.held && !a.path.length && a.place.out) a.path = [{ x: a.x, y: 174 }];
-    if (a.y > 150 && (a.path.length || a.held || (bus.exit && atCurb(a))) && laneFree(-90, 260)) {
-      bus.van = { bus: true, x: -40, y: 192, ang: 0, v: 150, dir: 1, len: VAN_LEN };
-      cars.push(bus.van); bus.state = 'come';
-      if (GROUP[a.kind] === 'claude' && (!reserveSeen || Math.random() < 0.3)) { bus.reserve = true; reserveSeen = true; }
-    }
-    return;
-  }
-  if (bus.state === 'come') {
-    van.x += van.v * dt;
-    if (bus.reserve && !bus.r1 && van.x > 2 && here) { bus.r1 = 1; a.gen = t; aSay(a, 'Ой-ой! Генерую резерв з відстрочкою…', t); }
-    if (!here || (a.leaving && !bus.exit) || van.x > a.x + 6) { bus.state = 'go'; busNext = t + (FAST ? 30 : 120); if (here) a.gen = 0; if (here && !bus.exit) { a.held = false; a.path = [{ x: 366, y: 174 }, { x: 366, y: 166 }]; } return; }
-    if (bus.forced && a.x > 280 && a.y >= 173 && !a.held) { a.held = true; a.path = []; a.pending = null; a.dir = 'left'; }
-    if (a.y >= 173 && van.x >= a.x - 24) {
-      bus.state = 'swerve'; bus.at = t; bus.sx = van.x; bus.tx = a.x + 32;
-      a.held = true; a.path = []; a.pending = null; a.dir = 'right';
-      sfx.screech();
-    }
-    return;
-  }
-  if (bus.state === 'swerve') {
-    const p = Math.min(1, (t - bus.at) / 0.85);
-    van.x = bus.sx + (bus.tx - bus.sx) * ease(p);
-    van.y = 192 - 11.5 * (1 - Math.pow(1 - p, 3));
-    van.ang = -0.55 * Math.sin(Math.min(1, p * 1.1) * Math.PI * 0.85);
-    van.v = 150 * (1 - p);
-    if (p > 0.15) skid(van, t);
-    if (p >= 1) { bus.state = 'stop'; bus.at = t; van.v = 0; van.lastW = null; }
-    return;
-  }
-  const s2 = t - bus.at;
-  if (bus.state === 'stop') {
-    if (s2 > 0.4 && !van.side) {
-      van.side = true; sfx.door();
-      const d = local(van, 1, -7);
-      bus.A = trooper(d.x, d.y, [{ x: d.x, y: 174.5 }, { x: a.x + 17, y: 174.5 }], 'A');
-    }
-    if (s2 > 0.8 && !van.rear) {
-      van.rear = true; sfx.door();
-      const r = local(van, -16, 0);
-      bus.B = trooper(r.x, r.y, [{ x: r.x - 3, y: 180.5 }, { x: a.x - 17, y: 180.5 }, { x: a.x - 17, y: 174.5 }], 'B');
-    }
-    const A = bus.A, B = bus.B;
-    if (A) moveAlong(A, dt, 38);
-    if (B) moveAlong(B, dt, 38);
-    if (A && B && !A.path.length && !B.path.length) {
-      A.dir = 'left'; B.dir = 'right'; if (here) a.dir = 'right';
-      bus.state = 'talk'; bus.at = t; troopSay(A, "Пред'явіть документи!", t);
-    }
-    return;
-  }
-  const A = bus.A, B = bus.B;
-  if (bus.state === 'talk') {
-    if (!here) { bus.state = 'board'; bus.at = t; return; }
-    if (s2 > 2.1 && !bus.d1) { bus.d1 = 1; a.doc = true; a.gen = 0; aSay(a, bus.reserve ? 'Ось, свіжий резерв з відстрочкою' : pick(['Ось, будь ласка', 'Ось мої документи', 'Тримайте…']), t); }
-    if (s2 > 3.5 && !bus.d2) { bus.d2 = 1; a.doc = false; A.doc = true; }                          // військовий гортає документи
-    // у Claude з документами все гаразд: його відпускають, і він іде на лавочку
-    const legit = GROUP[a.kind] === 'claude';
-    if (s2 > 5.8 && !bus.d3) { bus.d3 = 1; A.doc = false; troopSay(A, bus.reserve ? 'Відстрочка є. Все добре, ви вільні' : legit ? 'Ви вільні' : a.kind === 'ollama' ? 'На службі вітаються дешеві рішення!' : 'Бусифікуємо!', t); }
-    if (legit && s2 > 7.7) {
-      aSay(a, pick(['Дякую, гарного дня!', 'Дякую!', 'Слава Україні!']), t);
-      const d = bus.door = local(van, 1, -7);
-      A.path = [{ x: d.x, y: 174.5 }, d]; B.path = [{ x: d.x - 2, y: 174.5 }, d];
-      bus.state = 'board'; bus.at = t; bus.thrown = t; bus.free = true;
-      a.dir = 'right';                                   // стоїть, поки бус не поїде, потім іде на лавочку
-      return;
-    }
-    // відмовки по черзі, щоб не повторювались; на «Я ж бот!» і «А як же мій код?» другий військовий одразу відповідає
-    if (s2 > 9.1 && !bus.d4) { bus.d4 = 1; bus.ex = PROTESTS[protestI++ % PROTESTS.length]; aSay(a, bus.ex, t); bus.bot = bus.ex !== 'Але ж я просто ШІ…'; }
-    if (bus.bot && s2 > 11.3 && !bus.d5) { bus.d5 = 1; troopSay(B, bus.ex === 'А як же мій код?' ? 'На службі допишеш!' : pick(['В третю штурмову!', 'В піхоті знадобишся!', 'Підеш наземним безпілотником!', 'Будеш НРК водити!', 'На Лиман, в НРК підеш!']), t); }
-    if (s2 > (bus.bot ? 13.6 : 11.4)) {
-      // військові підходять впритул і хапають агента під руки
-      bus.door = local(van, 1, -7); bus.state = 'board'; bus.at = t;
-      A.path = [{ x: a.x + 7, y: 174.5 }]; B.path = [{ x: a.x - 7, y: 174.5 }];
-    }
-    return;
-  }
-  if (bus.state === 'board') {
-    const d = bus.door || (bus.door = local(van, 1, -7));
-    if (!bus.thrown) {
-      const inA = moveAlong(A, dt, 32), inB = moveAlong(B, dt, 32);
-      if (!here) { bus.thrown = t; }
-      else if (inA && inB && !bus.grab) { bus.grab = t; bus.x0 = a.x; bus.y0 = a.y; A.dir = 'left'; B.dir = 'right'; aSay(a, pick(['Пустіть!', 'А-а-а!', 'Ой-ой-ой!']), t); }
-      if (bus.grab) {
-        // закидають у бус: агент летить дугою, перекидаючись, у бічні двері
-        const p = Math.max(0, Math.min(1, (t - bus.grab - 0.55) / 0.65));
-        a.x = bus.x0 + (d.x - bus.x0) * p; a.y = bus.y0 + (d.y - bus.y0) * p - Math.sin(p * Math.PI) * 16;
-        if (p > 0) a.dir = ['down', 'right', 'up', 'left'][(p * 8 | 0) % 4];
-        if (p >= 1) { bus.thrown = t; draft(a, t); sfx.door(); A.path = [{ x: d.x, y: 174.5 }, d]; B.path = [{ x: d.x, y: 174.5 }, d]; }
-      }
-      return;
-    }
-    if (!A.hidden && moveAlong(A, dt, 38)) A.hidden = true;
-    if (!B.hidden && t - bus.thrown > 0.3 && moveAlong(B, dt, 38)) B.hidden = true;
-    if (A.hidden && B.hidden) { bus.state = 'close'; bus.at = t; }
-    return;
-  }
-  if (bus.state === 'close') {
-    if (s2 > 0.4 && van.side) { van.side = false; sfx.door(); }
-    if (s2 > 0.8 && van.rear) { van.rear = false; sfx.door(); }
-    if (s2 > 1.3) { bus.state = 'back'; bus.at = t; troops.length = 0; sfx.rev(); }
-    return;
-  }
-  if (bus.state === 'back') {
-    // здає трошки назад і вирівнюється
-    const p = Math.min(1, s2 / 1.0), sp = 7 * Math.sin(p * Math.PI) * dt * 1.6;
-    van.x -= Math.cos(van.ang) * sp; van.y -= Math.sin(van.ang) * sp;
-    van.ang += (0.12 - van.ang) * Math.min(1, dt * 3);
-    van.reverse = true;
-    if (p >= 1 && laneFree(van.x - 80, W + 60)) {
-      if (bus.free && agents.has(a.id)) { a.held = false; a.pending = null; a.path = bus.exit ? [] : [{ x: 366, y: 174 }, { x: 366, y: 166 }]; }   // хто йшов додому, лишається чекати машину
-      bus.state = 'go'; bus.at = t; van.reverse = false; van.v = 20; van.lastW = null; busNext = t + (FAST ? 40 : rand(180, 360)); sfx.rev(); }
-    return;
-  }
-  // уезжает: быстрее всех, с визгом шин в начале
-  van.v = Math.min(190, van.v + 140 * dt);
-  const vy = (192 - van.y) * 3;
-  van.ang += (Math.atan2(vy, Math.max(30, van.v)) - van.ang) * Math.min(1, dt * 6);
-  van.x += Math.cos(van.ang) * van.v * dt; van.y += Math.sin(van.ang) * van.v * dt;
-  if (Math.abs(van.y - 192) < 0.3) { van.y = 192; van.ang = 0; }
-  if (s2 < 0.7 && bus.a) skid(van, t, 0.8);
-}
-const VAN_LEN = 58;
-function drawVan(v, t) {
-  const O = '#2c3218', B = '#5f6d35', BL = '#77874a', BD = '#48542a', ox = 11, oy = 10;
-  cur = vctx; vctx.clearRect(0, 0, 40, 22);
-  Q(ox + 2, oy + 24, 56, 3, 'rgba(0,0,0,0.3)');
-  for (const wx of [ox + 8, ox + 42]) { Q(wx, oy - 2, 8, 3, '#141220'); Q(wx, oy + 23, 8, 3, '#141220'); }
-  Q(ox, oy, 58, 24, O); Q(ox + 1, oy + 1, 56, 22, B); Q(ox + 1, oy + 1, 56, 2, BL); Q(ox + 1, oy + 21, 56, 2, BD);
-  Q(ox + 50, oy + 2, 7, 20, shade(B, 0.9)); Q(ox + 50, oy + 2, 7, 1, BL); Q(ox + 56, oy + 4, 1, 16, '#2b2a24');
-  Q(ox + 44, oy + 3, 6, 18, '#6f93b8'); Q(ox + 45, oy + 4, 2, 16, '#b8d6f2');
-  Q(ox + 3, oy + 3, 40, 18, shade(B, 1.06));
-  for (let x = ox + 6; x < ox + 43; x += 6) Q(x, oy + 3, 1, 18, BD);
-  if (season === 'winter') Q(ox + 4, oy + 4, 38, 16, '#e8eef8');
-  Q(ox + 4, oy + 5, 7, 3, '#2d6ad8'); Q(ox + 4, oy + 8, 7, 3, '#ffd23a');
-  Q(ox + 14, oy + 6, 25, 12, season === 'winter' ? '#c9d2e2' : BD);
-  textQ('ТЦК', ox + 16, oy + 7, 2, '#f1efe0');
-  Q(ox + 46, oy - 2, 2, 2, O); Q(ox + 46, oy + 24, 2, 2, O);
-  Q(ox + 57, oy + 2, 1, 4, '#fff3c4'); Q(ox + 57, oy + 18, 1, 4, '#fff3c4');
-  const tail = v.reverse ? '#ffffff' : (bus && (bus.state === 'swerve' || bus.state === 'stop') ? '#ff2a2a' : '#c43c3c');
-  Q(ox, oy + 2, 1, 4, tail); Q(ox, oy + 18, 1, 4, tail);
-  if (v.side) { Q(ox + 30, oy, 12, 2, '#141220'); Q(ox + 17, oy - 3, 13, 3, O); Q(ox + 18, oy - 2, 11, 2, B); }
-  if (v.rear) { Q(ox, oy + 3, 2, 18, '#141220'); Q(ox - 1, oy - 7, 3, 8, O); Q(ox, oy - 6, 1, 6, B); Q(ox - 1, oy + 23, 3, 8, O); Q(ox, oy + 24, 1, 6, B); }
-  cur = g;
-  g.save(); g.translate(v.x, v.y); g.rotate(v.ang); g.imageSmoothingEnabled = false; g.drawImage(vanC, -20, -11, 40, 22); g.restore();
-  if (phase !== 'day') { const n = local(v, 22, 0); glow(n.x, n.y, 9, 5, '255,240,190', 0.22); }
-}
-function drawSkids(t) {
-  for (let i = skids.length - 1; i >= 0; i--) {
-    const s = skids[i], age = t - s.born, k = Math.min(1, (SKID_LIFE - age) / (SKID_LIFE * 0.4));
-    if (k <= 0) { skids.splice(i, 1); continue; }
-    const c = `rgba(14,12,20,${(0.6 * k * s.k).toFixed(3)})`;
-    lineQ(s.x0 * S, s.y0 * S, s.x1 * S, s.y1 * S, c); lineQ(s.x0 * S, s.y0 * S + 1, s.x1 * S, s.y1 * S + 1, c);
-  }
-}
-// военный в оливковой форме: кепка, пиксельный камуфляж, шеврон с флагом
-function drawTrooper(o, t) {
-  if (o.hidden) return;
-  const X = Math.round(o.x * S), Y = Math.round(o.y * S), T = Y - 24, dir = o.dir, walking = o.path.length > 0;
-  const ol = '#2b301a', jk = '#66703e', jl = '#7d8a4c', jd = '#4f5830', skin = '#e9b48c', sk = '#b97f5a', cap = '#56602f';
-  Q(X - 6, Y - 1, 13, 2, 'rgba(0,0,0,0.28)');
-  const f = walking ? ((o.ph * 8) | 0) % 2 : 2;
-  Q(X - 4, Y - 7, 8, 4, '#4d5530'); Q(X - 4, Y - 3 - (f === 0 ? 1 : 0), 3, 3, '#1b1a1f'); Q(X + 1, Y - 3 - (f === 1 ? 1 : 0), 3, 3, '#1b1a1f');
-  Q(X - 6, T + 12, 12, 10, ol); Q(X - 5, T + 12, 10, 9, jk); Q(X - 5, T + 12, 10, 1, jl);
-  [[-4, 14, jd], [1, 15, jd], [-2, 18, jd], [2, 19, '#8e9660'], [-4, 17, '#8e9660'], [0, 13, '#8e9660']].forEach(([dx, dy, c]) => Q(X + dx, T + dy, 2, 1, c));
-  Q(X - 5, T + 20, 10, 1, '#2b2a24'); q(X, T + 20, '#b8a25a');
-  const sw = walking ? ((o.ph * 8) | 0) % 2 : 0;
-  Q(X - 7, T + 13 + sw, 2, 6, jd); Q(X + 5, T + 13 - sw, 2, 6, jd); Q(X - 7, T + 19 + sw, 2, 1, skin); Q(X + 5, T + 19 - sw, 2, 1, skin);
-  // шеврон: синьо-жовтий прапорець на рукаві
-  const fx = dir === 'left' ? X + 5 : X - 7; Q(fx, T + 14, 2, 1, '#2d6ad8'); Q(fx, T + 15, 2, 1, '#ffd23a');
-  // голова і кепка
-  const look = o.doc ? 2 : 0;
-  Q(X - 4, T + 4, 8, 8, sk); Q(X - 3, T + 4, 6, 7, skin);
-  Q(X - 5, T + 2, 10, 4, ol); Q(X - 4, T + 2, 8, 3, cap); Q(X - 4, T + 2, 8, 1, '#6f7a44'); q(X - 1, T + 3, '#2d6ad8'); q(X, T + 3, '#ffd23a');
-  if (dir === 'down') { Q(X - 5, T + 6, 10, 1, ol); q(X - 2, T + 8 + look, '#1D1A33'); q(X + 1, T + 8 + look, '#1D1A33'); }
-  else if (dir === 'left') { Q(X - 7, T + 5, 3, 1, ol); q(X - 3, T + 7 + look, '#1D1A33'); }
-  else if (dir === 'right') { Q(X + 4, T + 5, 3, 1, ol); q(X + 2, T + 7 + look, '#1D1A33'); }
-  else Q(X - 3, T + 6, 6, 4, sk);
-  if (o.doc) { const dx = dir === 'left' ? X - 9 : X + 3; Q(dx, T + 14, 7, 6, '#1b2a5c'); Q(dx + 1, T + 15, 5, 4, '#e6e2f4'); Q(dx + 1, T + 16, 3, 1, '#9a92c4'); }
-}
-function drawTrooperLabel(o, t) {
-  if (o.hidden) return;
-  o.labelY = (Math.round(o.y * S) - 24) / S - 7;
-  const X = Math.round(o.x * S) - 6, Y = Math.round(o.labelY * S) + 3;
-  Q(X - 3, Y - 2, 17, 9, '#0e0b1c'); Q(X - 2, Y - 1, 15, 7, '#b8c46a'); Q(X - 1, Y, 13, 5, '#1c2010'); textQ('ТЦК', X, Y, 1, '#d8e27a');
-  if (o.doc) chip('lens', o.x + 6, (Math.round(o.y * S) - 24) / S + 1);
-}
-
 // ---------- рыжий кот Мурчик: спит, гуляет, приходит к агентам ----------
 // К работающему за столом садится рядом, к тем, кто на диване, ложится мурчать, у кофе выпрашивает. Агенты отвечают.
 const CAT_MAT = { lane: 142, entry: [{ x: 131, y: 142 }, { x: 131, y: 124 }] };
@@ -2105,7 +1731,7 @@ function catGreet(a, bye) {
 }
 function catSay(text, t) { cat.say = { text, until: t + 3 }; sfx.meow(); }
 function catPlan(t) {
-  const here = [...agents.values()].filter(a => !a.arriving && !a.leaving && !a.away && !a.held && !a.place.out && arrived(a));
+  const here = [...agents.values()].filter(a => !a.arriving && !a.leaving && !a.place.out && arrived(a));
   const desk = here.filter(a => a.place === a.desk), sofa = here.filter(a => a.place.sit && !a.place.desk && a.place.lane === 82), drink = here.filter(a => a.brk && a.place === a.brk.spot);
   const r = Math.random();
   if (drink.length && r < 0.6) return catGo({ lane: 142, entry: [{ x: 288, y: 142 }, { x: 288, y: 128 }] }, 'beg', pick(drink), 34);
@@ -2164,7 +1790,7 @@ function catStep(dt, t) {
   if (tz && tz.eat && t > tz.eat + 2.8) cat.toss = null;
   // сердечки, пока кот рядом с агентом или їсть смаколик
   if ((cat.mode === 'visit' || cat.mode === 'sofa' || cat.mode === 'greet' || (tz && tz.eat)) && t > cat.nextHeart) { cat.hearts.push({ x: cat.x + rand(-2, 2), y: cat.y - 9, life: 1.6 }); cat.nextHeart = t + rand(1.2, 2.6); }
-  const gone = b2 && cat.mode !== 'greet' && (b2.leaving || b2.held || b2.away || !agents.has(b2.id) || !arrived(b2) || (cat.mode === 'beg' && !b2.brk));
+  const gone = b2 && cat.mode !== 'greet' && (b2.leaving || !agents.has(b2.id) || !arrived(b2) || (cat.mode === 'beg' && !b2.brk));
   if (t > cat.until || gone) catPlan(t);
 }
 const CAT = { base: '#e0915f', dark: '#c97a4c', light: '#f6c79a', ol: '#7a3f22' };
@@ -2267,7 +1893,7 @@ function burst(dur, vol, filters, when = 0, attack = 0.004, brown = false) {
   gn.gain.setValueAtTime(0.0001, t0); gn.gain.exponentialRampToValueAtTime(vol, t0 + attack); gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   node.connect(gn); gn.connect(master); src.start(t0, Math.random() * 1.5); src.stop(t0 + dur + 0.05);
 }
-const VOICE = { claude: 520, 'claude-app': 600, codex: 380, chatgpt: 700, ollama: 450, gemini: 640, grok: 340, deepseek: 560, qwen: 600, mistral: 480, perplexity: 660, copilot: 580, tck: 230 };
+const VOICE = { claude: 520, 'claude-app': 600, codex: 380, chatgpt: 700, ollama: 450, gemini: 640, grok: 340, deepseek: 560, qwen: 600, mistral: 480, perplexity: 660, copilot: 580 };
 const sfx = {
   blip(kind) { const f = VOICE[kind] || 500; for (let i = 0; i < 3; i++) tone(f * (0.9 + Math.random() * 0.25), 0.05, 'square', 0.018, i * 0.07); },
   ding() { tone(880, 0.3, 'triangle', 0.07); tone(1320, 0.4, 'triangle', 0.05, 0.13); },
@@ -2283,13 +1909,6 @@ const sfx = {
     else if (type === 'limo') { tone(196, 0.32, 'sawtooth', 0.016); tone(247, 0.32, 'sawtooth', 0.016); }
     else { tone(415, 0.13, 'square', 0.025); tone(415, 0.16, 'square', 0.025, 0.2); }
   },
-  screech() { if (!sndOk()) return; burst(0.9, 0.09, [filt('bandpass', 2300, 9)], 0, 0.02); tone(1250, 0.8, 'sawtooth', 0.008, 0, 900); },
-  rev() { tone(70, 1.3, 'sawtooth', 0.03, 0, 190); },
-  whoosh(d) { if (!sndOk()) return; burst(1.8, 0.07, [filt('bandpass', 700, 1.2)], d, 0.7); tone(180, 1.8, 'sawtooth', 0.012, d, 90); },
-  hum() { tone(95, 4, 'triangle', 0.035, 0, 105); tone(190, 4, 'sine', 0.012, 0, 210); },
-  chirp() { for (let i = 0; i < 8; i++) tone(900 + Math.random() * 900, 0.06, 'square', 0.012, 0.4 + i * 0.11); },
-  turn() { tone(260, 1.1, 'triangle', 0.035, 0, 620); },
-  siren() { for (let i = 0; i < 3; i++) tone(620, 0.45, 'triangle', 0.03, i * 0.5, 880); },
   munch() { if (sndOk()) for (let i = 0; i < 4; i++) burst(0.04, 0.05, [filt('bandpass', 1400, 2)], i * 0.18); },
   door() { if (sndOk()) burst(0.09, 0.14, [filt('lowpass', 380)], 0, 0.004, true); },
   pour() { if (sndOk()) burst(1.8, 0.04, [filt('bandpass', 2600, 1.2)], 0.1, 0.25); },
@@ -2350,7 +1969,6 @@ function frame(t, dt) {
   Q(610, 104 + Math.round(Math.sin(t * 1.7) * 2), 2, 6, '#1b1830');
   if ((t % 4.3) > 0.15) { q(600, 102, '#ffd35c'); q(603, 102, '#ffd35c'); }
 
-  drawSkids(t);
   // всё, что стоит на полу, рисуется по глубине (y)
   const items = [];
   for (const d of DESKS) { items.push({ y: d.y0 + 13, draw: () => drawDesk(d, t) }); items.push({ y: d.y0 + 21, draw: () => drawChairBack(d) }); }
@@ -2401,7 +2019,6 @@ function frame(t, dt) {
     } } });
   if (season === 'winter') items.push({ y: 140, draw: () => drawXmasTree(t) });
   for (const a of agents.values()) items.push({ y: a.y + 0.5, draw: () => drawBot(a, t) });
-  for (const o of troops) items.push({ y: o.y + 0.5, draw: () => drawTrooper(o, t) });
   items.push({ y: cat.y + (cat.mode === 'sofa' && !cat.path.length ? -2 : 0.3), draw: () => drawCat(t) });
   items.sort((p, q2) => p.y - q2.y).forEach(i => i.draw());
   if (ROOM_DIM[phase]) { g.fillStyle = ROOM_DIM[phase]; g.fillRect(76, 24, 232, 136); }
@@ -2416,9 +2033,7 @@ function frame(t, dt) {
   drawFlash();
   drawTreat(t);
   drawHearts();
-  drawMissile(t);
   for (const a of agents.values()) drawLabel(a, t);
-  for (const o of troops) drawTrooperLabel(o, t);
 }
 
 // ---------- вывод на экран ----------
@@ -2443,8 +2058,8 @@ function bubbles(t) {
   const fs = fontPx(ws * 0.4), u = Math.max(2, Math.round(ws * 0.5)), pad = u * 2;
   ctx.font = `${fs}px ${FONT_UI}`; ctx.textBaseline = 'middle';
   cat.labelY = cat.y - (cat.path.length || cat.mode === 'sleep' || cat.mode === 'sofa' ? 7 : 9);
-  for (const a of [...agents.values(), cat, ...troops]) {
-    if (!a.say || a.say.until < t || a.arriving || a.away || a.hidden) continue;
+  for (const a of [...agents.values(), cat]) {
+    if (!a.say || a.say.until < t || a.arriving || a.hidden) continue;
     // довга репліка: два рядки, розрив по пробілу ближче до середини
     let ls = [a.say.text];
     if (ctx.measureText(a.say.text).width > ctx.measureText('x'.repeat(26)).width) {
@@ -2481,7 +2096,6 @@ const ICON5 = {
   wind:   { rows: ['####.', '....#', '###..', '.....', '#####'], col: '#a8e4ff' },
   soundOn:  { rows: ['..#..', '.##.o', '###.o', '.##.o', '..#..'], col: '#E0DAFA', col2: '#7fe0b4' },
   soundOff: { rows: ['..#..', '.##..', '###.o', '.##..', '..#..'], col: '#6a628f', col2: '#ff5c5c' },
-  bus:      { rows: ['####.', '#oo##', '#####', '.#..#', '.....'], col: '#9aab52', col2: '#9cc8ff' },
   demoOn:   { rows: ['..#..', '#####', '#o#o#', '#####', '.#.#.'], col: '#b9a8ff', col2: '#7fe0b4' },
   demoOff:  { rows: ['..#..', '#####', '#o#o#', '#####', '.#.#.'], col: '#6a628f', col2: '#3a3552' },
 };
@@ -2504,8 +2118,7 @@ function panel(t) {
     { key: 'season', txt: `Сезон: ${SEASON_UA[season]}${seasonPick === 'auto' ? ' · авто' : ''}`, ic: ICON5[season] },
     { key: 'weather', txt: `Погода: ${WEATHER_UA[weather]}${weatherPick === 'auto' ? ' · авто' : ''}`, ic: ICON5[weather] },
     { key: 'sound', txt: soundOn ? `Звук: увімк · ${Math.round(volume * 100)}%` : 'Звук: вимк', ic: soundOn ? ICON5.soundOn : ICON5.soundOff },
-    { key: 'bus', txt: bus || busWant ? 'Бусифікація…' : busTarget()?.kind === 'chatgpt' ? 'Бусифікувати GPT' : 'Бусифікувати', ic: ICON5.bus, half: true, short: bus || busWant ? 'Бусифікація…' : 'Бусифікувати' },
-    { key: 'demo', txt: 'Демо', ic: demoOn ? ICON5.demoOn : ICON5.demoOff, half: true, compact: true },
+    { key: 'demo', txt: 'Демо', ic: demoOn ? ICON5.demoOn : ICON5.demoOff },
   ];
   ctx.textBaseline = 'middle';
   const rows = list.map(a => {
@@ -2572,7 +2185,7 @@ function panel(t) {
       ctx.fillStyle = kd.body; ctx.fillRect(hx, hy + 5 * u, 6 * u, 2 * u);
       ctx.font = `${fs}px ${FONT_UI}`; ctx.fillStyle = '#f7f5ff';
       ctx.fillText(r.name, hx + 9 * u, ry + rowH * 0.32);
-      const col = r.act === 'work' ? '#7fe0b4' : r.act === 'wait' ? ((t * 2 | 0) % 2 ? '#ffcf5c' : '#c9a23f') : (r.act === 'coffee' || r.act === 'tea' || r.act === 'cafe') ? '#ff9ab8' : r.act === 'ride' ? '#ffc83a' : (r.act === 'army' || r.act === 'check') ? '#b8c46a' : '#b9a8ff';
+      const col = r.act === 'work' ? '#7fe0b4' : r.act === 'wait' ? ((t * 2 | 0) % 2 ? '#ffcf5c' : '#c9a23f') : (r.act === 'coffee' || r.act === 'tea' || r.act === 'cafe') ? '#ff9ab8' : r.act === 'ride' ? '#ffc83a' : '#b9a8ff';
       ctx.font = `${small}px ${FONT_UI}`; ctx.fillStyle = col;
       ctx.fillText(r.st, hx + 9 * u, ry + rowH * 0.74);
       ry += rowH;
@@ -2602,7 +2215,6 @@ addEventListener('click', e => {
   const bt = btns[btnAt(e)]; if (!bt) return;
   if (bt.key === 'season') setSeason(SEASONS[(SEASONS.indexOf(seasonPick) + 1) % SEASONS.length]);
   else if (bt.key === 'weather') setWeather(WEATHERS[(WEATHERS.indexOf(weatherPick) + 1) % WEATHERS.length]);
-  else if (bt.key === 'bus') busifyNow();
   else if (bt.key === 'demo') setDemo(!demoOn);
   else setSound(!soundOn);
 });
@@ -2615,7 +2227,7 @@ function onReveal() {
   const t = performance.now() / 1000;
   if (performance.now() - pausedAt < 5000) return;
   while (reveals.length && t - reveals[0] > 120) reveals.shift();
-  if (reveals.length >= 2 || bus || brief || missile) return;
+  if (reveals.length >= 2 || brief) return;
   const here = [...agents.values()].filter(a => avail(a) && arrived(a) && !a.brk?.cafe && a.status !== 'waiting');
   if (!here.length) return;
   reveals.push(t);
