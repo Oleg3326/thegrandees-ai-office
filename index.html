@@ -269,7 +269,7 @@ const zoneOf = a => { const p = a.place; if (p.street || p.out) return 'street';
 // лавочка справа на улице: туда выходит отдохнуть агент, которому нечего делать
 const BENCH = { lane: 142, entry: [{ x: 192, y: 142 }, { x: 192, y: 152 }, { x: 192, y: 166 }, { x: 192, y: 174 }, { x: 366, y: 174 }, { x: 366, y: 166 }], face: 'down', sit: true, act: 'bench', out: true, owner: null };
 // перекур: у прохода у входа стоит агент с контекстом выше 60%, которому нечего делать (пока только Claude Code)
-const SMOKE = { lane: 142, entry: [{ x: 192, y: 142 }, { x: 192, y: 152 }, { x: 192, y: 166 }, { x: 192, y: 174 }], face: 'down', sit: false, act: 'smoke', out: true, owner: null };
+const SMOKE = { lane: 142, entry: [{ x: 192, y: 142 }, { x: 192, y: 152 }, { x: 192, y: 166 }, { x: 164, y: 168 }], face: 'down', sit: false, act: 'smoke', out: true, owner: null };
 const WINDOWS = [198, 230];
 const inWindow = (x, y) => y >= 26.5 && y < 41.5 && WINDOWS.some(wx => x >= wx + 0.5 && x < wx + 25.5);
 const inBuilding = (x, y) => x >= 71 && x < 313 && y >= 19 && y < 165;
@@ -1426,13 +1426,13 @@ function chip(name, bx, by) {
 }
 // табличка с именем: тёмная коробка в неоновой рамке цвета агента
 function neonTag(name, cx, y, col) {
-  const tw = textW(name) * 2, X = Math.round(cx * S - tw / 2), Y = Math.round(y * S);
-  Q(X - 4, Y - 3, tw + 8, 16, '#0e0b1c'); Q(X - 3, Y - 2, tw + 6, 14, col); Q(X - 2, Y - 1, tw + 4, 12, '#17142c');
-  textQ(name, X, Y + 1, 2, col);
+  const tw = textW(name), X = Math.round(cx * S - tw / 2), Y = Math.round(y * S);
+  Q(X - 3, Y - 3, tw + 6, 11, '#0e0b1c'); Q(X - 2, Y - 2, tw + 4, 9, col); Q(X - 1, Y - 1, tw + 2, 7, '#17142c');
+  textQ(name, X, Y, 1, col);
 }
 // шкала заполнения контекста: зелёная до 60%, жёлтая до 85%, дальше мигает красным
 function ctxBar(cx, ly, p, t) {
-  const w = 26, X = Math.round(cx * S - w / 2), Y = Math.round(ly * S) + 14;
+  const w = 20, X = Math.round(cx * S - w / 2), Y = Math.round(ly * S) + 10;
   Q(X - 1, Y - 1, w + 2, 5, '#0e0b1c'); Q(X, Y, w, 3, '#2a2548');
   Q(X, Y, Math.max(1, Math.round(w * p)), 3, p < 0.6 ? '#7fe0b4' : p < 0.85 ? '#ffcf5c' : (t * 4 | 0) % 2 ? '#ff5a5a' : '#ff9a9a');
 }
@@ -1450,7 +1450,7 @@ function drawLabel(a, t) {
   const name = a.sub ? (a.subType || 'SUB').toUpperCase().slice(0, 9) : k.short + (a.tagNo > 1 ? a.tagNo : '');
   const sofa = arrived(a) && a.place.sit && !a.place.desk && a.place.lane === 82;
   const cafeR = a.brk?.cafe && arrived(a) && a.place === CAFE[1];   // за столиком таблички не налазять одна на одну
-  const ly = top - 9 - ((sofa && CHILL.indexOf(a.place) % 2) || cafeR ? 7 : 0);
+  const ly = top - 8 - ((sofa && CHILL.indexOf(a.place) % 2) || cafeR ? 7 : 0);
   a.labelY = ly;
   neonTag(name, x, ly, k.tag || k.head);
   if (!a.sub && a.ctx > 0.02) ctxBar(x, ly, a.ctx, t);   // шкала контекста под табличкой
