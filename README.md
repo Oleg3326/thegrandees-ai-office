@@ -1,101 +1,101 @@
-# AI Office (форк)
+# AI Office (fork)
 
-Пиксельные живые обои для [Wallpaper Engine](https://www.wallpaperengine.io/) (Windows), которые показывают, что делают ИИ-программы на твоём ПК. Открыл Claude Code, Codex, ChatGPT, приложение Claude или Ollama, и в офис приезжает бот: садится за стол и печатает. Закрыл программу, и бот уходит к бордюру и уезжает.
+A pixel-art live wallpaper for [Wallpaper Engine](https://www.wallpaperengine.io/) (Windows) that shows what the AI tools on your PC are doing. Open Claude Code, Codex, ChatGPT, the Claude desktop app or Ollama, and a bot arrives in its own car, sits at a desk and starts typing. Close the program, and the bot walks out to the curb and rides home.
 
-Это личный форк [AlexanderGrandees/thegrandees-ai-office](https://github.com/AlexanderGrandees/thegrandees-ai-office) (MIT). Пиксельный арт, сцена, погода и звуки остались оригинальными, автор оригинала указан в лицензии (`LICENSE`). Только Windows, только для развлечения.
+This is a personal fork of [AlexanderGrandees/thegrandees-ai-office](https://github.com/AlexanderGrandees/thegrandees-ai-office) (MIT). The pixel art, scene, weather and sounds are the original author's work, credited in `LICENSE`. Windows only, for entertainment only.
 
-![Осень, ночь](docs/screenshots/autumn-night.png)
+![Autumn night](docs/screenshots/autumn-night.png)
 
-## Что изменено в форке
+## What this fork changes
 
-- **Интерфейс на русском:** реплики, диалоги, статусы, кнопки (в репликах нет «ё»: в пиксельном шрифте её может не быть).
-- **Регион:** часы, восход и закат и сезон «Авто» считаются для выбранного города. Кнопка в панели, по умолчанию Москва, выбор хранится в браузере (`office-region`). Список городов: `REGIONS` в `index.html`.
-- **Субагенты Claude Code** (хуки `SubagentStart` и `SubagentStop`) показаны отдельными ботами в жёлтых касках. Бот входит с улицы пешком, на табличке тип («EXPLORE», «PLAN»), в панели строка «Claude Code › Explore». Не больше 4 субагентов на сессию.
-- **Контекст Claude Code:** шкала под табличкой (зелёная до 60%, жёлтая до 85%, дальше мигает красным), процент в панели, стопка бумаг у стола (при 90% ещё летает листок).
-- **Ошибки:** при падении инструмента (`PostToolUseFailure`) у бота краснеют глаза и монитор на 8 секунд.
-- **Перекур:** если у Claude Code контекст выше 60%, а он ничего не делает, бот выходит на улицу левее двери и курит 20-35 секунд, ругаясь («Пиздец» и подобное). Как только появляется задача, сразу возвращается. Перекур не чаще раза в 2-3 минуты. Пока только у Claude.
-- **Компактные таблички** над ботами и имя в панели без названия папки: просто «Claude Code».
-- **Вырезано:** ракета, «бусификация» и связанные с ними сцены и звуки.
-- **Служебное:** автообновление из репозитория автора выключено (иначе оно затирало бы правки; вернуть можно через `OFFICE_ALLOW_UPDATE=1`), «счётчик установок» автора не отправляется.
+- **Russian interface:** speech bubbles, dialogues, statuses and buttons (no "ё" in the bubbles: the pixel font may not have it).
+- **Region:** the clock, sunrise/sunset and the "Auto" season follow the chosen city. Pick it with the button in the panel; Moscow by default; the choice is stored in the browser (`office-region`). The list is `REGIONS` in `index.html`.
+- **Claude Code subagents** (`SubagentStart` / `SubagentStop` hooks) appear as separate bots in yellow hard hats. They walk in from the street, the name tag shows the type ("EXPLORE", "PLAN"), and the panel shows "Claude Code › Explore". At most 4 subagents per session.
+- **Claude Code context:** a bar under the name tag (green up to 60%, yellow up to 85%, then flashing red), the percentage in the panel, and a pile of papers by the desk (a sheet flies around at 90%).
+- **Tool errors:** when a tool fails (`PostToolUseFailure`), the bot's eyes and monitor turn red for 8 seconds.
+- **Smoke break:** when Claude Code's context is above 60% and it is idle, the bot steps outside, stands left of the door and smokes for 20 to 35 seconds, swearing. A new task sends it straight back to its desk. At most one break every 2 to 3 minutes. Claude only, for now.
+- **Compact name tags** over the bots, and the panel shows just "Claude Code" without the folder name.
+- **Removed:** the rocket, the "busification" and their scenes and sounds.
+- **Housekeeping:** the author's auto-update is off (it would overwrite local edits; set `OFFICE_ALLOW_UPDATE=1` to bring it back) and the author's install counter is not pinged.
 
-## Что происходит в офисе
+## What happens in the office
 
-| Агент | Цвет | Как офис узнаёт, что он делает |
+| Agent | Colour | How the office knows what it is doing |
 |---|---|---|
-| Claude Code | оранжевый | хуки: работает, ждёт тебя, закончил |
-| Codex | бело-чёрный | хуки (один раз подтверди их в Codex командой `/hooks`) |
-| ChatGPT (приложение) | зелёный | хуков нет, «работает» определяется по нагрузке на процессор |
-| Ollama | лама в наушниках | сидит в офисе, пока Ollama открыта |
-| Приложение Claude, Gemini, Grok, DeepSeek и др. | фирменные цвета | приложение открыто, «работает» по нагрузке |
+| Claude Code | orange | hooks: working, waiting for you, done |
+| Codex | white and black | hooks (approve them once in Codex with `/hooks`) |
+| ChatGPT (desktop app) | green | no hooks, "working" is guessed from CPU load |
+| Ollama | llama in headphones | sits in the office while Ollama is open |
+| Claude app, Gemini, Grok, DeepSeek and others | brand colours | app is open; "working" by CPU load |
 
-- **Работает:** бот печатает, на мониторе бежит код, над ним значок инструмента.
-- **Ждёт тебя** (запрос разрешения или вопрос): машет рукой, монитор мигает жёлтым «!».
-- **Простой 40 секунд:** идёт отдыхать на диван, к аркаде или на кухню. Время от времени ходит за кофе или чаем и сидит за столиком в кафе.
-- **Кот Мурчик**, свои машины (Тесла, лимузин, такси), диалоги ботов, лампы, сезоны, погода, звук, день и ночь по реальному солнцу: всё как в оригинале.
+- **Working:** the bot types, code runs on its monitor, an icon shows the tool in use.
+- **Waiting for you** (permission prompt or question): it waves, and the monitor blinks a yellow "!".
+- **Idle for 40 seconds:** it relaxes on the sofa, at the arcade or in the kitchen. Every few minutes a working bot fetches coffee or tea or sits at the cafe table.
+- **Murchyk the cat**, the cars (Tesla, limousine, taxi), bot dialogues, desk lamps, seasons, weather, sound and day/night by the real sun are unchanged from the original.
 
-## Установка
+## Install
 
-Нужен [Wallpaper Engine](https://store.steampowered.com/app/431960/Wallpaper_Engine/). Скачай или клонируй репозиторий и дважды кликни `install-windows.cmd` (из PowerShell: `$env:TGTI_SOURCE = (Get-Location).Path; powershell -ExecutionPolicy Bypass -File .\windows\install.ps1`). Права администратора не нужны. Установщик:
+You need [Wallpaper Engine](https://store.steampowered.com/app/431960/Wallpaper_Engine/). Clone or download this repo and double-click `install-windows.cmd` (from PowerShell: `$env:TGTI_SOURCE = (Get-Location).Path; powershell -ExecutionPolicy Bypass -File .\windows\install.ps1`). No admin rights needed. The installer:
 
-- копирует офис в `%LOCALAPPDATA%\TGTI-AI-Office` (отдельная копия: после правок в репозитории установщик надо запускать заново);
-- использует твой Node.js 18+ или скачивает свой в ту же папку;
-- прописывает хуки в `~/.claude/settings.json` и в Codex (резервные копии `*.bak-…`);
-- добавляет обои в Wallpaper Engine: вкладка *Installed*, «AI Office»;
-- создаёт скрытую задачу, которая раз в минуту запускает сервер, пока открыт Wallpaper Engine.
+- copies the office to `%LOCALAPPDATA%\TGTI-AI-Office` (a separate copy: run the installer again after editing the repo);
+- uses your Node.js 18+ or downloads a private copy into that folder;
+- adds the hooks to `~/.claude/settings.json` and to Codex (backups are kept as `*.bak-…`);
+- adds the wallpaper to Wallpaper Engine: open *Installed* and pick "AI Office";
+- adds a hidden task that starts the server every minute while Wallpaper Engine is open.
 
-После установки перезапусти Claude Code и Codex (хуки читаются при старте). В Codex один раз набери `/hooks` и подтверди хуки.
+Restart Claude Code and Codex afterwards (hooks are read at startup). In Codex, type `/hooks` once and approve them.
 
-## Проверка без ИИ-программ
+## Testing without any AI running
 
-Открой `index.html` в браузере и допиши к адресу режим, затем нажми Ctrl+F5:
+Open `index.html` in a browser, append a mode to the address and press Ctrl+F5:
 
-| Адрес | Что показывает |
+| Address | What it shows |
 |---|---|
-| `index.html#demo` | офис с демо-ботами, субагентами, ошибкой и 82% контекста |
-| `index.html#demo-smoke-fast` | перекур: простаивающий Claude с контекстом 82% выходит курить примерно через 30 секунд |
-| `index.html#demo-winter-night-storm` | зима, ночь, гроза (подойдут и `-summer`, `-fog`, `-snow` и т. д.) |
-| `index.html#demo-brief` | брифинг |
-| `index.html#nohud` | без панели |
+| `index.html#demo` | the office with fake bots, subagents, an error and 82% context |
+| `index.html#demo-smoke-fast` | the smoke break: an idle Claude at 82% context goes out to smoke after about 30 seconds |
+| `index.html#demo-winter-night-storm` | winter, night, thunderstorm (also `-summer`, `-fog`, `-snow` and so on) |
+| `index.html#demo-brief` | the briefing |
+| `index.html#nohud` | no panel |
 
-Через сервер: в `%LOCALAPPDATA%\TGTI-AI-Office` выполни `node test-agent.mjs TEST`: бот зайдёт, запустит двух субагентов, поймает ошибку и дойдёт до 97% контекста.
+Through the server: in `%LOCALAPPDATA%\TGTI-AI-Office` run `node test-agent.mjs TEST`. A bot walks in, starts two subagents, hits an error and reaches 97% context.
 
-Кнопка «Демо» в панели добавляет в офис ненастоящих ботов, если реальных нет.
+The "Demo" button in the panel adds fake bots when no real ones are around.
 
-## Настройки
+## Settings
 
-- **Сезон, погода, звук, регион:** кнопки в панели или свойства обоев в Wallpaper Engine.
-- **Размер окна контекста** угадывается: больше 200k токенов считается окном в 1M. Свой размер задаётся переменной окружения сервера `OFFICE_CTX_MAX=число`.
+- **Season, weather, sound, region:** the buttons in the panel, or the wallpaper properties in Wallpaper Engine.
+- **Context window size** is guessed: more than 200k tokens in context counts as a 1M window. Set your own with the server environment variable `OFFICE_CTX_MAX=number`.
 
-## Приватность
+## Privacy
 
-- Хук отправляет id сессии, имя папки, имя события и инструмента, id процесса и короткую подпись действия (имя файла, первое слово команды, домен сайта, первые 6 символов запроса). Полные промпты, команды и код не уходят, и ничего не покидает ПК. Размер контекста считается по хвосту файла транскрипта, наружу из хука уходит одно число.
-- Сервер слушает только `127.0.0.1:7777`.
-- Хук всегда завершается успешно и не мешает Claude Code и Codex, даже если сервер выключен.
-- Список программ сервер читает раз в 4 секунды (PowerShell).
+- The hook sends the session id, folder name, event and tool names, a process id and a short caption of the action (a file name, the first word of a command, a site's domain, the first 6 characters of your prompt). Full prompts, commands and code are never sent, and nothing leaves your PC. The context size comes from the tail of the transcript file; only one number leaves the hook.
+- The server listens on `127.0.0.1:7777` only.
+- The hook always exits successfully, so it never breaks Claude Code or Codex, even when the server is off.
+- The server reads the process list every 4 seconds (PowerShell).
 
-## Удаление
+## Remove
 
-`powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\TGTI-AI-Office\uninstall.ps1"`: убирает хуки, автозапуск, обои и личную копию Node.js.
+`powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\TGTI-AI-Office\uninstall.ps1"` removes the hooks, the autostart, the wallpaper and the private Node.js copy.
 
-## Ограничения
+## Limitations
 
-- Видны только установленные программы. ChatGPT и Claude во вкладке браузера и облачные сессии не показываются.
-- Контекст есть только у Claude Code (у Codex, ChatGPT и приложения Claude хуков с этими данными нет). Токены в секунду и лимиты хуки не отдают.
-- Субагентов у Codex нет.
-- Папка `macos/` осталась от оригинала и в этом форке не проверялась.
+- Only programs installed on the computer are visible. ChatGPT or Claude in a browser tab and cloud sessions do not show up.
+- Context is available for Claude Code only (the other tools have no hooks with that data). Tokens per second and rate limits are not exposed by hooks.
+- Codex has no subagents.
+- The `macos/` folder is left over from the original and is untested in this fork.
 
-## Файлы
+## Files
 
-| Файл | Назначение |
+| File | What it does |
 |---|---|
-| `index.html` | обои: сцена 384×216, масштаб ×2 без сглаживания |
-| `office-server.mjs` | локальный сервер: процессы, события хуков, `/state` |
-| `hook.mjs` | хук Claude Code и Codex |
-| `install-hooks.mjs` | добавляет и убирает хуки |
-| `windows/` | установщик, деинсталлятор, `watch.vbs` |
-| `test-agent.mjs` | ненастоящий агент для проверки |
-| `fonts/` | шрифт [Tiny5](https://github.com/Gissio/font_tiny5) (SIL Open Font License) |
+| `index.html` | the wallpaper: a 384×216 scene scaled up 2× without smoothing |
+| `office-server.mjs` | local server: processes, hook events, `/state` |
+| `hook.mjs` | the hook called by Claude Code and Codex |
+| `install-hooks.mjs` | adds or removes the hooks |
+| `windows/` | installer, uninstaller, `watch.vbs` |
+| `test-agent.mjs` | fake agent for testing |
+| `fonts/` | [Tiny5](https://github.com/Gissio/font_tiny5) pixel font (SIL Open Font License) |
 
-## Лицензия
+## License
 
-Код: [MIT](LICENSE), шрифт: SIL OFL 1.1 (`fonts/OFL.txt`). Оригинал сделал [TheGrandees](https://github.com/AlexanderGrandees).
+Code: [MIT](LICENSE). Font: SIL OFL 1.1 (`fonts/OFL.txt`). Original by [TheGrandees](https://github.com/AlexanderGrandees).
