@@ -346,7 +346,7 @@ function state() {
     out.push({
       id,
       kind: a.kind,
-      name: LABEL[a.kind] + (s?.folder ? ` · ${s.folder}` : ''),
+      name: LABEL[a.kind],
       status: fresh ? s.status : (a.cpuBusy ? 'working' : 'idle'),
       tool: fresh ? s.tool : '',
       detail: fresh && s.status !== 'idle' ? s.detail : '',
@@ -365,7 +365,7 @@ function state() {
   // Сессия без найденного процесса (или сканирование недоступно): показываем, пока от неё были события за 2 минуты.
   const linked = new Set(byPid.values());
   for (const s of live) if (!linked.has(s) && (!lastScanOk || now - s.last < 120e3)) {
-    out.push({ id: s.id, kind: s.kind, name: LABEL[s.kind] + (s.folder ? ` · ${s.folder}` : ''), status: s.status, tool: s.tool, detail: s.status !== 'idle' ? s.detail : '', hooks: true, ctx: ctxFrac(s), err: now - s.errAt < ERR_SHOW });
+    out.push({ id: s.id, kind: s.kind, name: LABEL[s.kind], status: s.status, tool: s.tool, detail: s.status !== 'idle' ? s.detail : '', hooks: true, ctx: ctxFrac(s), err: now - s.errAt < ERR_SHOW });
     if (s.subs.size) out.push(...subRows(s, s.id, s.kind, now));
   }
   return out;

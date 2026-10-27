@@ -268,6 +268,8 @@ const BRIEF_SPOTS = [[210, 124, 'down'], [184, 137, 'up'], [236, 137, 'up'], [15
 const zoneOf = a => { const p = a.place; if (p.street || p.out) return 'street'; const x = spotOf(p).x; return x < V ? 'lounge' : x < 268 ? 'desks' : 'kitchen'; };
 // лавочка справа на улице: туда выходит отдохнуть агент, которому нечего делать
 const BENCH = { lane: 142, entry: [{ x: 192, y: 142 }, { x: 192, y: 152 }, { x: 192, y: 166 }, { x: 192, y: 174 }, { x: 366, y: 174 }, { x: 366, y: 166 }], face: 'down', sit: true, act: 'bench', out: true, owner: null };
+// перекур: у прохода у входа стоит агент с контекстом выше 60%, которому нечего делать (пока только Claude Code)
+const SMOKE = { lane: 142, entry: [{ x: 192, y: 142 }, { x: 192, y: 152 }, { x: 192, y: 166 }, { x: 192, y: 174 }], face: 'down', sit: false, act: 'smoke', out: true, owner: null };
 const WINDOWS = [198, 230];
 const inWindow = (x, y) => y >= 26.5 && y < 41.5 && WINDOWS.some(wx => x >= wx + 0.5 && x < wx + 25.5);
 const inBuilding = (x, y) => x >= 71 && x < 313 && y >= 19 && y < 165;
@@ -826,6 +828,7 @@ function wanted(a, t) {
 function endBreak(a, t) {
   if (!a.brk) return;
   if (a.spot !== a.brk.spot) a.brk.spot.owner = null;
+  if (a.brk.spot === SMOKE) a.nextSmoke = t + (FAST ? 25 : rand(120, 180));
   a.brk = null; a.nextBreak = t + breakGap();
 }
 // уходящий агент идёт к бордюру, там его ждёт своя машина
@@ -875,16 +878,21 @@ function breakTick(a, t) {
   if (a.brk) {
     const there = arrived(a) && a.place === a.brk.spot, sp = a.brk.spot;
     if (there && !a.brk.until) {
-      a.brk.until = t + (a.brk.cafe ? rand(26, 40) : sp === BENCH ? (FAST ? rand(12, 18) : rand(30, 60)) : rand(10, 18));
+      a.brk.until = t + (a.brk.cafe ? rand(26, 40) : sp === SMOKE ? (FAST ? rand(10, 14) : rand(20, 35)) : sp === BENCH ? (FAST ? rand(12, 18) : rand(30, 60)) : rand(10, 18));
       if (a.brk.cafe) { const p = a.brk.cafe; if (p.brk?.until && !(p.say && p.say.until > t)) { say(a, pick(LINES.cafeHi), t, true); p.nextSay = Math.max(p.nextSay, t + 4.5); } }
       else say(a, pick(LINES[sp.act]), t, true);
+      if (sp === SMOKE) a.brk.mid = (t + a.brk.until) / 2;
       if (sp.act === 'coffee' || sp.act === 'tea' || a.brk.cafe) sfx.pour();
     }
+    if (a.brk.mid && t > a.brk.mid && !(a.say && a.say.until > t)) { a.brk.mid = 0; say(a, pick(LINES.smoke), t, true); }
     const midChat = a.brk.chat && a.brk.chat.i < a.brk.chat.lines.length && a.brk.cafe?.brk?.chat === a.brk.chat;   // розмову за столиком доводять до кінця
-    if ((a.status === 'waiting' && !a.brk.forced) || (a.brk.until && t > a.brk.until && !midChat)) endBreak(a, t);
+    if ((a.status === 'waiting' && !a.brk.forced) || (a.brk.spot === SMOKE && a.status !== 'idle') || (a.brk.until && t > a.brk.until && !midChat)) endBreak(a, t);
     return;
   }
   if (brief) return;                                   // кличуть на брифінг: нікуди самі не йдемо
+  if (a.kind === 'claude' && !a.sub && a.status === 'idle' && a.ctx > 0.6 && t > (a.nextSmoke || 0) && !SMOKE.owner && settled(a, t) && (a.place === a.desk || a.place === a.spot)) {
+    SMOKE.owner = a; a.brk = { spot: SMOKE, until: 0 }; return;
+  }
   if (resting(a, t)) { if (t > a.nextOut && settled(a, t)) goOut(a, t); return; }
   if (t < a.nextBreak || !settled(a, t)) return;
   if (!(a.desk && arrived(a) && a.place === a.desk && a.status !== 'waiting')) { a.nextBreak = t + 15; return; }
@@ -955,7 +963,7 @@ function activity(a, t) {
 }
 const ACT_UA = { work: 'работает', wait: 'ждет тебя', desk: 'на месте', walk: 'идет', coffee: "пьет кофе", tea: "пьет чай",
   tv: 'смотрит графики', music: 'слушает музыку', game: 'играет в аркаду', phone: 'в телефоне', sleep: 'дремлет',
-  ride: 'едет', cab: 'ждет машину', serve: 'несет чай', brief: 'на брифинге', bench: 'на лавочке', cafe: 'пьет кофе за столиком' };
+  ride: 'едет', cab: 'ждет машину', serve: 'несет чай', brief: 'на брифинге', bench: 'на лавочке', smoke: 'курит', cafe: 'пьет кофе за столиком' };
 const RIDE_UA = { taxi: ['едет на такси', 'ждет такси'], tesla: ['едет на Тесле', 'садится в Теслу'], limo: ['едет на лимузине', 'ждет лимузин'] };
 // що агент робить зараз: інструмент і коротка підпис від хуків (ім'я файлу, команда, сайт, 6 символів запиту)
 const TOOL_UA = {
@@ -982,6 +990,7 @@ const LINES = {
   bye: ['Пока!', 'До встречи!', 'Пока-пока!'],
   err: ['Ой, ошибка!', 'Опять красное…', 'Это не я, это инструмент', 'Попробую еще раз'],
   byeRide: { taxi: ['Вызываю такси'], tesla: ['Тесла уже ждет', 'Еду на Тесле'], limo: ['Подайте лимузин', 'Мой лимузин!'] },
+  smoke: ['Ебать его в рот', 'Пиздец', 'Пиздец…', 'Ну и контекст…'],
   bench: ['Свежий воздух', 'Красиво тут', 'Посижу немного'],
   cafe: ['Вкусный кофе!', 'Угощайся шоколадкой', 'Как твой код?', 'Еще по кофе?', 'М-м-м, шоколад', 'Тут лучший кофе', 'Расскажи новости', 'Черный или с молоком?', 'Шоколад дает силы'],
   cafeHi: ['Привет, садись!', 'Кофе и шоколад!', 'Угощаю!'],
@@ -1367,7 +1376,7 @@ function drawBot(a, t) {
   else if (dir === 'down') { Q(X - 2, T + 16, 5, 3, '#1D1A33'); Q(X - 1, T + 17, 3, 1, working && (t * 3 | 0) % 2 ? '#ffffff' : k.acc); }
   else if (dir !== 'up') Q(X - 1, T + 16, 3, 2, bd);
   const tap = working ? ((t * 9 + a.ph) | 0) % 2 : 0, swing = walking ? ((a.ph * 8) | 0) % 2 : 0;
-  const armL = waiting ? 0 : -tap + swing, armR = waiting ? -7 - ((t * 3 | 0) % 2) : working ? -(1 - tap) : walking ? 1 - swing : 0;
+  const armL = waiting ? 0 : -tap + swing, armR = waiting ? -7 - ((t * 3 | 0) % 2) : act === 'smoke' ? -4 : working ? -(1 - tap) : walking ? 1 - swing : 0;
   Q(X - 8, T + 15 + armL, 2, 5, bd); Q(X - 8, T + 19 + armL, 2, 1, obd);
   Q(X + 7, T + 15 + armR, 2, 5, bd); Q(X + 7, T + 19 + armR, 2, 1, obd);
   // кружка или телефон в руке
@@ -1382,6 +1391,10 @@ function drawBot(a, t) {
       if (tea && a.lemon && (a.carry || a.teaCup > t)) { Q(cx + (left ? 2 : 0), cy - 1, 2, 2, '#e6f04a'); q(cx + (left ? 3 : 0), cy - 1, '#9cc23a'); }
       const st = (t * 3 | 0) % 2; q(cx + 1 + st, cy - 2, 'rgba(255,255,255,0.7)'); q(cx + 2 - st, cy - 4, 'rgba(255,255,255,0.45)');
     }
+  }
+  if (act === 'smoke') {                                // сигарета у рта: огонёк и дымок вверх
+    Q(X + 2, T + 10, 7, 2, '#f7f5ff'); Q(X + 9, T + 10, 2, 2, (t * 2 | 0) % 2 ? '#ff7a2a' : '#ffb347');
+    for (let i = 0; i < 3; i++) { const k2 = (t * 0.8 + i / 3) % 1; Q(X + 10 + Math.round(Math.sin(t * 2 + i * 2) * 2), T + 8 - Math.round(k2 * 16), 2, 2, `rgba(235,235,245,${(0.95 * (1 - k2)).toFixed(2)})`); }
   }
   if (act === 'phone' || act === 'cab') { Q(X + 8, T + 13, 4, 6, '#1D1A33'); Q(X + 9, T + 14, 2, 3, (t * 2 | 0) % 2 ? '#5cc8ff' : '#7fe0b4'); }
   if (!sit) {
@@ -2324,7 +2337,7 @@ function withDemo(real) {
   return [...real, ...demo];
 }
 const DEMO_LIST = [
-  { id: 'd1', kind: 'claude', name: 'Claude Code · tgti', status: 'working', tool: 'Edit', detail: 'JournalPage.tsx', hooks: true, ctx: 0.82 },
+  { id: 'd1', kind: 'claude', name: 'Claude Code', status: HASH.includes('smoke') ? 'idle' : 'working', tool: 'Edit', detail: 'JournalPage.tsx', hooks: true, ctx: 0.82 },
   // субагенты Claude Code (в демо появляются на ~28 секунд каждые 45); у Plan «упал инструмент» — красные глаза и монитор
   { id: 'd1:sub:1', kind: 'claude', sub: true, subType: 'Explore', name: 'Claude Code › Explore', status: 'working', tool: 'Grep', detail: 'TODO', hooks: true },
   { id: 'd1:sub:2', kind: 'claude', sub: true, subType: 'Plan', name: 'Claude Code › Plan', status: 'working', tool: 'Read', detail: 'App.tsx', hooks: true, err: true },
